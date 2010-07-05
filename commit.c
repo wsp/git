@@ -7,7 +7,7 @@
 #include "revision.h"
 #include "notes.h"
 
-int core_clock_skew = -1;
+int core_clock_skew = 86400;
 int save_commit_buffer = 1;
 
 const char *commit_type = "commit";
