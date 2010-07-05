@@ -595,6 +595,14 @@ static int git_default_core_config(const char *var, const char *value)
 		return 0;
 	}
 
+	if (!strcmp(var, "core.clockskew")) {
+		if (!value || !strcmp(value, "none"))
+			core_clock_skew = -1;
+		else
+			core_clock_skew = git_config_int(var, value);
+		return 0;
+	}
+
 	/* Add other config variables here and to Documentation/config.txt. */
 	return 0;
 }

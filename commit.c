@@ -7,6 +7,7 @@
 #include "revision.h"
 #include "notes.h"
 
+int core_clock_skew = -1;
 int save_commit_buffer = 1;
 
 const char *commit_type = "commit";
@@ -855,7 +856,8 @@ static int in_commit_list(const struct commit_list *want, struct commit *c)
 }
 
 static int contains_recurse(struct commit *candidate,
-			    const struct commit_list *want)
+			    const struct commit_list *want,
+			    unsigned long cutoff)
 {
 	struct commit_list *p;
 
@@ -872,9 +874,13 @@ static int contains_recurse(struct commit *candidate,
 	if (parse_commit(candidate) < 0)
 		return 0;
 
+	/* stop searching if we go too far back in time */
+	if (candidate->date < cutoff)
+		return 0;
+
 	/* Otherwise recurse and mark ourselves for future traversals. */
 	for (p = candidate->parents; p; p = p->next) {
-		if (contains_recurse(p->item, want)) {
+		if (contains_recurse(p->item, want, cutoff)) {
 			candidate->object.flags |= TMP_MARK;
 			return 1;
 		}
@@ -885,5 +891,20 @@ static int contains_recurse(struct commit *candidate,
 
 int contains(struct commit *candidate, const struct commit_list *want)
 {
-	return contains_recurse(candidate, want);
+	unsigned long cutoff = 0;
+
+	if (core_clock_skew >= 0) {
+		const struct commit_list *c;
+		unsigned long min_date = ULONG_MAX;
+		for (c = want; c; c = c->next) {
+			if (parse_commit(c->item) < 0)
+				continue;
+			if (c->item->date < min_date)
+				min_date = c->item->date;
+		}
+		if (min_date > core_clock_skew)
+			cutoff = min_date - core_clock_skew;
+	}
+
+	return contains_recurse(candidate, want, cutoff);
 }
