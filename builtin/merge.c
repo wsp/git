@@ -185,6 +185,8 @@ static struct option builtin_merge_options[] = {
 		"allow fast-forward (default)"),
 	OPT_BOOLEAN(0, "ff-only", &fast_forward_only,
 		"abort if fast-forward is not possible"),
+	OPT_BOOLEAN('i', "ignored-are-precious", &ignored_are_precious,
+	  "fail when an ignored file needs to be overwritten"),
 	OPT_RERERE_AUTOUPDATE(&allow_rerere_auto),
 	OPT_CALLBACK('s', "strategy", &use_strategies, "strategy",
 		"merge strategy to use", option_parse_strategy),
@@ -693,9 +695,11 @@ int checkout_fast_forward(const unsigned char *head, const unsigned char *remote
 	memset(&opts, 0, sizeof(opts));
 	memset(&t, 0, sizeof(t));
 	memset(&dir, 0, sizeof(dir));
-	dir.flags |= DIR_SHOW_IGNORED;
-	dir.exclude_per_dir = ".gitignore";
-	opts.dir = &dir;
+	if (!ignored_are_precious) {
+		dir.flags |= DIR_SHOW_IGNORED;
+		dir.exclude_per_dir = ".gitignore";
+		opts.dir = &dir;
+	}
 
 	opts.head_idx = 1;
 	opts.src_index = &the_index;

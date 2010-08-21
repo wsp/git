@@ -450,6 +450,13 @@ core.excludesfile::
 	to the value of `$HOME` and "{tilde}user/" to the specified user's
 	home directory.  See linkgit:gitignore[5].
 
+core.ignoredareprecious::
+	By default ignored (i.e. trashable) untracked files are
+	automatically removed from the working tree when they get in
+	the way of merge or switching between branches.  This option
+	declares that such files are precious instead, and prevents
+	merges and checkouts from succeeding.
+
 core.editor::
 	Commands such as `commit` and `tag` that lets you edit
 	messages by launching an editor uses the value of this

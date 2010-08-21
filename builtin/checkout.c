@@ -392,9 +392,11 @@ static int merge_working_tree(struct checkout_opts *opts,
 		topts.gently = opts->merge && old->commit;
 		topts.verbose_update = !opts->quiet;
 		topts.fn = twoway_merge;
-		topts.dir = xcalloc(1, sizeof(*topts.dir));
-		topts.dir->flags |= DIR_SHOW_IGNORED;
-		topts.dir->exclude_per_dir = ".gitignore";
+		if (!ignored_are_precious) {
+			topts.dir = xcalloc(1, sizeof(*topts.dir));
+			topts.dir->flags |= DIR_SHOW_IGNORED;
+			topts.dir->exclude_per_dir = ".gitignore";
+		}
 		tree = parse_tree_indirect(old->commit ?
 					   old->commit->object.sha1 :
 					   (unsigned char *)EMPTY_TREE_SHA1_BIN);
@@ -677,6 +679,8 @@ int cmd_checkout(int argc, const char **argv, const char *prefix)
 		OPT_SET_INT('3', "theirs", &opts.writeout_stage, "stage",
 			    3),
 		OPT_BOOLEAN('f', "force", &opts.force, "force"),
+		OPT_BOOLEAN('i', "ignored-are-precious", &ignored_are_precious,
+		  "fail when an ignored file needs to be overwritten"),
 		OPT_BOOLEAN('m', "merge", &opts.merge, "merge"),
 		OPT_STRING(0, "conflict", &conflict_style, "style",
 			   "conflict style (merge or diff3)"),
