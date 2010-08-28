@@ -7,14 +7,135 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Git\n"
 "Report-Msgid-Bugs-To: Git Mailing List <git@vger.kernel.org>\n"
-"POT-Creation-Date: 2010-09-20 14:44+0000\n"
-"PO-Revision-Date: 2010-06-05 19:06 +0000\n"
+"POT-Creation-Date: 2010-09-20 20:14+0000\n"
+"PO-Revision-Date: 2010-09-20 15:01+0000\n"
 "Last-Translator: Ævar Arnfjörð Bjarmason <avarab@gmail.com>\n"
 "Language-Team: Git Mailing List <git@vger.kernel.org>\n"
 "Language: is\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
+
+#: builtin/init-db.c:34
+#, c-format
+msgid "Could not make %s writable by group"
+msgstr "Gat ekki gert %s skrifanlega af hóp"
+
+#: builtin/init-db.c:61
+#, c-format
+msgid "insanely long template name %s"
+msgstr "brjálæðislega langt sniðsnafn %s"
+
+#: builtin/init-db.c:66
+#, c-format
+msgid "cannot stat '%s'"
+msgstr "gat ekki stat-að '%s'"
+
+#: builtin/init-db.c:72
+#, c-format
+msgid "cannot stat template '%s'"
+msgstr "gat ekki stat-að sniðið '%s'"
+
+#: builtin/init-db.c:79
+#, c-format
+msgid "cannot opendir '%s'"
+msgstr "gat ekki opnað möppuna '%s'"
+
+#: builtin/init-db.c:96
+#, c-format
+msgid "cannot readlink '%s'"
+msgstr "gat ekki lesið tengilinn '%s'"
+
+#: builtin/init-db.c:98
+#, c-format
+msgid "insanely long symlink %s"
+msgstr "brjálæðislega langur tengill %s"
+
+#: builtin/init-db.c:101
+#, c-format
+msgid "cannot symlink '%s' '%s'"
+msgstr "gat ekki búið til tengilinn '%s' '%s'"
+
+#: builtin/init-db.c:105
+#, c-format
+msgid "cannot copy '%s' to '%s'"
+msgstr "gat ekki afritað '%s' til '%s'"
+
+#: builtin/init-db.c:109
+#, c-format
+msgid "ignoring template %s"
+msgstr "hunsa sniðið %s"
+
+#: builtin/init-db.c:132
+#, c-format
+msgid "insanely long template path %s"
+msgstr "brjálæðislega löng slóð á snið %s"
+
+#: builtin/init-db.c:140
+#, c-format
+msgid "templates not found %s"
+msgstr "sniðin funndust ekki %s"
+
+#: builtin/init-db.c:153
+#, c-format
+msgid "not copying templates of a wrong format version %d from '%s'"
+msgstr "afrita ekki sniðin vegna rangar útgáfu %d frá '%s'"
+
+#: builtin/init-db.c:191
+#, c-format
+msgid "insane git directory %s"
+msgstr "brjáluð git mappa %s"
+
+#. TRANSLATORS: The first '%s' is either "Reinitialized
+#. existing" or "Initialized empty", the second " shared" or
+#. "", and the last '%s%s' is the verbatim directory name.
+#: builtin/init-db.c:355
+#, c-format
+msgid "%s%s Git repository in %s%s\n"
+msgstr "%s%s Git lind í %s%s\n"
+
+#: builtin/init-db.c:356
+msgid "Reinitialized existing"
+msgstr "Endurgerði"
+
+#: builtin/init-db.c:356
+msgid "Initialized empty"
+msgstr "Bjó til tóma"
+
+#: builtin/init-db.c:357
+msgid " shared"
+msgstr " sameiginlega"
+
+#: builtin/init-db.c:376
+msgid "cannot tell cwd"
+msgstr "finn ekki núverandi möppu"
+
+#: builtin/init-db.c:450 builtin/init-db.c:457
+#, c-format
+msgid "cannot mkdir %s"
+msgstr "get ekki búið til möppuna %s"
+
+#: builtin/init-db.c:461
+#, c-format
+msgid "cannot chdir to %s"
+msgstr "get ekki farið inn í möppuna %s"
+
+#: builtin/init-db.c:483
+#, c-format
+msgid ""
+"%s (or --work-tree=<directory>) not allowed without specifying %s (or --git-"
+"dir=<directory>)"
+msgstr ""
+"%s (eða --work-tree=<mappa>) ekki leyfilegt ásamt %s (eða --git-dir=<mappa>)"
+
+#: builtin/init-db.c:509
+msgid "Cannot access current working directory"
+msgstr "Get ekki opnað núverandi möppu"
+
+#: builtin/init-db.c:512
+#, c-format
+msgid "Cannot access work tree '%s'"
+msgstr "Get ekki opnað tréð '%s'"
 
 #. TRANSLATORS: This is a test. You don't need to translate it.
 #: t/t0200/test.c:5
