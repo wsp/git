@@ -6,6 +6,7 @@
 #include "cache.h"
 #include "commit.h"
 #include "notes.h"
+#include "gettext.h"
 
 #define DEFAULT_MERGE_LOG_LEN 20
 
