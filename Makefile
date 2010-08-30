@@ -2022,10 +2022,11 @@ cscope:
 	$(RM) cscope*
 	$(FIND) . -name '*.[hcS]' -print | xargs cscope -b
 
+XGETTEXT_OPTIONS = --add-comments
 pot:
-	$(XGETTEXT) --add-comments --keyword=_ --keyword=N_ --output=po/git.pot --language=C $(C_OBJ:o=c) t/t0200/test.c
-	$(XGETTEXT) --add-comments --join-existing --output=po/git.pot --language=Shell $(SCRIPT_SH) t/t0200/test.sh
-	$(XGETTEXT) --add-comments --join-existing --keyword=__ --output=po/git.pot --language=Perl $(SCRIPT_PERL) t/t0200/test.perl
+	$(XGETTEXT) $(XGETTEXT_OPTIONS) --keyword=_ --keyword=N_ --output=po/git.pot --language=C $(C_OBJ:o=c) t/t0200/test.c
+	$(XGETTEXT) $(XGETTEXT_OPTIONS) --join-existing --output=po/git.pot --language=Shell $(SCRIPT_SH) t/t0200/test.sh
+	$(XGETTEXT) $(XGETTEXT_OPTIONS) --join-existing --keyword=__ --output=po/git.pot --language=Perl $(SCRIPT_PERL) t/t0200/test.perl
 
 POFILES := $(wildcard po/*.po)
 MOFILES := $(patsubst po/%.po,share/locale/%/LC_MESSAGES/git.mo,$(POFILES))
