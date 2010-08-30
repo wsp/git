@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Git\n"
 "Report-Msgid-Bugs-To: Git Mailing List <git@vger.kernel.org>\n"
-"POT-Creation-Date: 2010-09-20 14:41+0000\n"
+"POT-Creation-Date: 2010-09-20 14:43+0000\n"
 "PO-Revision-Date: 2010-06-05 19:06 +0000\n"
 "Last-Translator: Ævar Arnfjörð Bjarmason <avarab@gmail.com>\n"
 "Language-Team: Git Mailing List <git@vger.kernel.org>\n"
@@ -30,6 +30,18 @@ msgstr "TILRAUN: C tilraunastrengur"
 #, c-format
 msgid "TEST: A C test string %s"
 msgstr "TILRAUN: C tilraunastrengur %s"
+
+#. TRANSLATORS: This is a test. You don't need to translate it.
+#: t/t0200/test.c:15
+#, c-format
+msgid "TEST: Hello World!"
+msgstr "TILRAUN: Halló Heimur!"
+
+#. TRANSLATORS: This is a test. You don't need to translate it.
+#: t/t0200/test.c:18
+#, c-format
+msgid "TEST: Old English Runes"
+msgstr "TILRAUN: ᚻᛖ ᚳᚹᚫᚦ ᚦᚫᛏ ᚻᛖ ᛒᚢᛞᛖ ᚩᚾ ᚦᚫᛗ ᛚᚪᚾᛞᛖ ᚾᚩᚱᚦᚹᛖᚪᚱᛞᚢᛗ ᚹᛁᚦ ᚦᚪ ᚹᛖᛥᚫ"
 
 #. TRANSLATORS: This is a test. You don't need to translate it.
 #: t/t0200/test.sh:8

@@ -10,4 +10,10 @@ int main(void)
 
 	/* TRANSLATORS: This is a test. You don't need to translate it. */
 	printf(_("TEST: A C test string %s"), "variable");
+
+	/* TRANSLATORS: This is a test. You don't need to translate it. */
+	printf(_("TEST: Hello World!"));
+
+	/* TRANSLATORS: This is a test. You don't need to translate it. */
+	printf(_("TEST: Old English Runes"));
 }
