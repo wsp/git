@@ -16,35 +16,36 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: t/t0200/test.c:4
+#. TRANSLATORS: This is a test. You don't need to translate it.
+#: t/t0200/test.c:5
 msgid "See 'git help COMMAND' for more information on a specific command."
 msgstr "Sjá 'git help SKIPUN' til að sjá hjálp fyrir tiltekna skipun."
 
 #. TRANSLATORS: This is a test. You don't need to translate it.
-#: t/t0200/test.c:9
+#: t/t0200/test.c:10
 msgid "TEST: A C test string"
 msgstr "TILRAUN: C tilraunastrengur"
 
 #. TRANSLATORS: This is a test. You don't need to translate it.
-#: t/t0200/test.c:12
+#: t/t0200/test.c:13
 #, c-format
 msgid "TEST: A C test string %s"
 msgstr "TILRAUN: C tilraunastrengur %s"
 
 #. TRANSLATORS: This is a test. You don't need to translate it.
-#: t/t0200/test.c:15
+#: t/t0200/test.c:16
 #, c-format
 msgid "TEST: Hello World!"
 msgstr "TILRAUN: Halló Heimur!"
 
 #. TRANSLATORS: This is a test. You don't need to translate it.
-#: t/t0200/test.c:18
+#: t/t0200/test.c:19
 #, c-format
 msgid "TEST: Old English Runes"
 msgstr "TILRAUN: ᚻᛖ ᚳᚹᚫᚦ ᚦᚫᛏ ᚻᛖ ᛒᚢᛞᛖ ᚩᚾ ᚦᚫᛗ ᛚᚪᚾᛞᛖ ᚾᚩᚱᚦᚹᛖᚪᚱᛞᚢᛗ ᚹᛁᚦ ᚦᚪ ᚹᛖᛥᚫ"
 
 #. TRANSLATORS: This is a test. You don't need to translate it.
-#: t/t0200/test.c:21
+#: t/t0200/test.c:22
 #, c-format
 msgid "TEST: ‘single’ and “double” quotes"
 msgstr "TILRAUN: ‚einfaldar‘ og „tvöfaldar“ gæsalappir"
