@@ -2022,7 +2022,7 @@ cscope:
 	$(RM) cscope*
 	$(FIND) . -name '*.[hcS]' -print | xargs cscope -b
 
-XGETTEXT_OPTIONS = --add-comments --msgid-bugs-address="Git Mailing List <git@vger.kernel.org>"
+XGETTEXT_OPTIONS = --add-comments --msgid-bugs-address="Git Mailing List <git@vger.kernel.org>" --from-code=UTF-8
 pot:
 	$(XGETTEXT) $(XGETTEXT_OPTIONS) --keyword=_ --keyword=N_ --output=po/git.pot --language=C $(C_OBJ:o=c) t/t0200/test.c
 	$(XGETTEXT) $(XGETTEXT_OPTIONS) --join-existing --output=po/git.pot --language=Shell $(SCRIPT_SH) t/t0200/test.sh
