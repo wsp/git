@@ -11,7 +11,9 @@ my $has_gettext_library = $Git::I18N::__HAS_LIBRARY;
 
 ok(1, "Testing Git::I18N version $Git::I18N::VERSION with " .
 	 ($has_gettext_library
-	  ? "Locale::Messages version $Locale::Messages::VERSION"
+	  ? (defined $Locale::Messages::VERSION
+		 ? "Locale::Messages version $Locale::Messages::VERSION"
+		 : "Locale::Messages version <1.17")
 	  : "NO Perl gettext library"));
 ok(1, "Git::I18N is located at $INC{'Git/I18N.pm'}");
 
