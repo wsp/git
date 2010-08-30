@@ -18,9 +18,15 @@ then
 		p
 		q
 	}')
-	# Export it as an environmental variable so the t0202/test.pl Perl
-	# test can use it too
-	export is_IS_locale
+	# is_IS.ISO8859-1 on Solaris and FreeBSD, is_IS.iso88591 on Debian
+	is_IS_iso_locale=$(locale -a | sed -n '/^is_IS\.[iI][sS][oO]8859-*1$/{
+		p
+		q
+	}')
+
+	# Export them as an environmental variable so the t0202/test.pl
+	# Perl test can use it too
+	export is_IS_locale is_IS_iso_locale
 
 	if test -n "$is_IS_locale" &&
 		test $GIT_INTERNAL_GETTEXT_SH_SCHEME != "fallthrough"
@@ -34,6 +40,20 @@ then
 		say "# lib-gettext: Found '$is_IS_locale' as a is_IS UTF-8 locale"
 	else
 		say "# lib-gettext: No is_IS UTF-8 locale available"
+	fi
+
+	if test -n "$is_IS_iso_locale" &&
+		test $GIT_INTERNAL_GETTEXT_SH_SCHEME != "fallthrough"
+	then
+		# Some of the tests need the reference Icelandic locale
+		test_set_prereq GETTEXT_ISO_LOCALE
+
+		# Exporting for t0202/test.pl
+		GETTEXT_ISO_LOCALE=1
+		export GETTEXT_ISO_LOCALE
+		say "# lib-gettext: Found '$is_IS_iso_locale' as a is_IS ISO-8859-1 locale"
+	else
+		say "# lib-gettext: No is_IS ISO-8859-1 locale available"
 	fi
 else
 	# Only run some tests when we don't have gettext support
