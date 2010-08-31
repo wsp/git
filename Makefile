@@ -2022,11 +2022,24 @@ cscope:
 	$(RM) cscope*
 	$(FIND) . -name '*.[hcS]' -print | xargs cscope -b
 
-XGETTEXT_OPTIONS = --add-comments --msgid-bugs-address="Git Mailing List <git@vger.kernel.org>" --from-code=UTF-8
+XGETTEXT_OPTIONS = \
+	--add-comments \
+	--msgid-bugs-address="Git Mailing List <git@vger.kernel.org>" \
+	--from-code=UTF-8 \
+	--output=po/git.pot
+
+XGETTEXT_OPTIONS_C = $(XGETTEXT_OPTIONS) --keyword=_ --keyword=N_ --language=C
+XGETTEXT_OPTIONS_SH = $(XGETTEXT_OPTIONS) --language=Shell
+XGETTEXT_OPTIONS_PERL = $(XGETTEXT_OPTIONS) --keyword=__ --language=Perl
+
+LOCALIZED_C = $(C_OBJ:o=c) t/t0200/test.c
+LOCALIZED_SH = $(SCRIPT_SH) t/t0200/test.sh
+LOCALIZED_PERL = $(SCRIPT_PERL) t/t0200/test.perl
+
 pot:
-	$(XGETTEXT) $(XGETTEXT_OPTIONS) --keyword=_ --keyword=N_ --output=po/git.pot --language=C $(C_OBJ:o=c) t/t0200/test.c
-	$(XGETTEXT) $(XGETTEXT_OPTIONS) --join-existing --output=po/git.pot --language=Shell $(SCRIPT_SH) t/t0200/test.sh
-	$(XGETTEXT) $(XGETTEXT_OPTIONS) --join-existing --keyword=__ --output=po/git.pot --language=Perl $(SCRIPT_PERL) t/t0200/test.perl
+	$(XGETTEXT) $(XGETTEXT_OPTIONS_C) $(LOCALIZED_C)
+	$(XGETTEXT) $(XGETTEXT_OPTIONS_SH) --join-existing $(LOCALIZED_SH)
+	$(XGETTEXT) $(XGETTEXT_OPTIONS_PERL) --join-existing $(LOCALIZED_PERL)
 
 POFILES := $(wildcard po/*.po)
 MOFILES := $(patsubst po/%.po,share/locale/%/LC_MESSAGES/git.mo,$(POFILES))
