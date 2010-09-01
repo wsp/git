@@ -550,9 +550,10 @@ static void update_refs_for_switch(struct checkout_opts *opts,
 				fprintf(stderr, _("Already on '%s'\n"),
 					new->name);
 			else if (opts->new_branch)
-				fprintf(stderr, "Switched to%s branch '%s'\n",
-					opts->branch_exists ? " and reset" : " a new",
-					new->name);
+				if (opts->branch_exists)
+					fprintf(stderr, _("Switched to and reset branch '%s'\n"), new->name);
+				else
+					fprintf(stderr, _("Switched to a new branch '%s'\n"), new->name);
 			else
 				fprintf(stderr, _("Switched to branch '%s'\n"),
 					new->name);
