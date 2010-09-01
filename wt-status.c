@@ -1,4 +1,4 @@
-#include "cache.h"
+#include "builtin.h"
 #include "wt-status.h"
 #include "object.h"
 #include "dir.h"

@@ -1,9 +1,8 @@
-#include "cache.h"
+#include "builtin.h"
 #include "parse-options.h"
 #include "transport.h"
 #include "remote.h"
 #include "string-list.h"
-#include "strbuf.h"
 #include "run-command.h"
 #include "refs.h"
 
