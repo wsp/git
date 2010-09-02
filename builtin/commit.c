@@ -647,12 +647,12 @@ static int prepare_to_commit(const char *index_file, const char *prefix,
 
 		if (in_merge)
 			fprintf(fp,
-				"#\n"
+				_("#\n"
 				"# It looks like you may be committing a MERGE.\n"
 				"# If this is not correct, please remove the file\n"
 				"#	%s\n"
 				"# and try again.\n"
-				"#\n",
+				"#\n"),
 				git_path("MERGE_HEAD"));
 
 		fprintf(fp,
@@ -677,16 +677,16 @@ static int prepare_to_commit(const char *index_file, const char *prefix,
 					   getenv("GIT_COMMITTER_EMAIL"));
 		if (strcmp(author_ident, committer_ident))
 			fprintf(fp,
-				"%s"
-				"# Author:    %s\n",
+				_("%s"
+				"# Author:    %s\n"),
 				ident_shown++ ? "" : "#\n",
 				author_ident);
 		free(author_ident);
 
 		if (!user_ident_sufficiently_given())
 			fprintf(fp,
-				"%s"
-				"# Committer: %s\n",
+				_("%s"
+				"# Committer: %s\n"),
 				ident_shown++ ? "" : "#\n",
 				committer_ident);
 
