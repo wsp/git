@@ -31,7 +31,7 @@ test_expect_success 'setup' '
 	git add dir2/added
 '
 
-test_expect_success 'status (1)' '
+test_expect_success NO_GETTEXT_POISON 'status (1)' '
 
 	grep "use \"git rm --cached <file>\.\.\.\" to unstage" output
 
@@ -61,7 +61,7 @@ cat >expect <<\EOF
 #	untracked
 EOF
 
-test_expect_success 'status (2)' '
+test_expect_success NO_GETTEXT_POISON 'status (2)' '
 
 	git status >output &&
 	test_cmp expect output
@@ -87,7 +87,7 @@ EOF
 
 git config advice.statusHints false
 
-test_expect_success 'status (advice.statusHints false)' '
+test_expect_success NO_GETTEXT_POISON 'status (advice.statusHints false)' '
 
 	git status >output &&
 	test_cmp expect output
@@ -133,6 +133,12 @@ test_expect_success 'status -s -b' '
 
 '
 
+test_expect_success 'setup dir3' '
+	mkdir dir3 &&
+	: >dir3/untracked1 &&
+	: >dir3/untracked2
+'
+
 cat >expect <<EOF
 # On branch master
 # Changes to be committed:
@@ -148,16 +154,14 @@ cat >expect <<EOF
 #
 # Untracked files not listed (use -u option to show untracked files)
 EOF
-test_expect_success 'status -uno' '
-	mkdir dir3 &&
-	: >dir3/untracked1 &&
-	: >dir3/untracked2 &&
+test_expect_success NO_GETTEXT_POISON 'status -uno' '
 	git status -uno >output &&
 	test_cmp expect output
 '
 
-test_expect_success 'status (status.showUntrackedFiles no)' '
+test_expect_success NO_GETTEXT_POISON 'status (status.showUntrackedFiles no)' '
 	git config status.showuntrackedfiles no
+	test_when_finished "git config --unset status.showuntrackedfiles" &&
 	git status >output &&
 	test_cmp expect output
 '
@@ -173,7 +177,7 @@ cat >expect <<EOF
 # Untracked files not listed
 EOF
 git config advice.statusHints false
-test_expect_success 'status -uno (advice.statusHints false)' '
+test_expect_success NO_GETTEXT_POISON 'status -uno (advice.statusHints false)' '
 	git status -uno >output &&
 	test_cmp expect output
 '
@@ -184,7 +188,6 @@ cat >expect << EOF
 A  dir2/added
 EOF
 test_expect_success 'status -s -uno' '
-	git config --unset status.showuntrackedfiles
 	git status -s -uno >output &&
 	test_cmp expect output
 '
@@ -219,13 +222,14 @@ cat >expect <<EOF
 #	output
 #	untracked
 EOF
-test_expect_success 'status -unormal' '
+test_expect_success NO_GETTEXT_POISON 'status -unormal' '
 	git status -unormal >output &&
 	test_cmp expect output
 '
 
-test_expect_success 'status (status.showUntrackedFiles normal)' '
+test_expect_success NO_GETTEXT_POISON 'status (status.showUntrackedFiles normal)' '
 	git config status.showuntrackedfiles normal
+	test_when_finished "git config --unset status.showuntrackedfiles" &&
 	git status >output &&
 	test_cmp expect output
 '
@@ -242,7 +246,6 @@ A  dir2/added
 ?? untracked
 EOF
 test_expect_success 'status -s -unormal' '
-	git config --unset status.showuntrackedfiles
 	git status -s -unormal >output &&
 	test_cmp expect output
 '
@@ -278,16 +281,19 @@ cat >expect <<EOF
 #	output
 #	untracked
 EOF
-test_expect_success 'status -uall' '
+test_expect_success NO_GETTEXT_POISON 'status -uall' '
 	git status -uall >output &&
 	test_cmp expect output
 '
-test_expect_success 'status (status.showUntrackedFiles all)' '
+test_expect_success NO_GETTEXT_POISON 'status (status.showUntrackedFiles all)' '
 	git config status.showuntrackedfiles all
+	test_when_finished "git config --unset status.showuntrackedfiles" &&
 	git status >output &&
-	rm -rf dir3 &&
-	git config --unset status.showuntrackedfiles &&
 	test_cmp expect output
+'
+
+test_expect_success 'teardown dir3' '
+	rm -rf dir3
 '
 
 cat >expect <<EOF
@@ -337,7 +343,7 @@ cat >expect <<\EOF
 #	../untracked
 EOF
 
-test_expect_success 'status with relative paths' '
+test_expect_success NO_GETTEXT_POISON 'status with relative paths' '
 
 	(cd dir1 && git status) >output &&
 	test_cmp expect output
@@ -409,18 +415,19 @@ cat >expect <<\EOF
 #	<BLUE>untracked<RESET>
 EOF
 
-test_expect_success 'status with color.ui' '
+test_expect_success NO_GETTEXT_POISON 'status with color.ui' '
 
 	git config color.ui always &&
+	test_when_finished "git config --unset color.ui" &&
 	git status | test_decode_color >output &&
 	test_cmp expect output
 
 '
 
-test_expect_success 'status with color.status' '
+test_expect_success NO_GETTEXT_POISON 'status with color.status' '
 
-	git config --unset color.ui &&
 	git config color.status always &&
+	test_when_finished "git config --unset color.status" &&
 	git status | test_decode_color >output &&
 	test_cmp expect output
 
@@ -439,7 +446,6 @@ EOF
 
 test_expect_success 'status -s with color.ui' '
 
-	git config --unset color.status &&
 	git config color.ui always &&
 	git status -s | test_decode_color >output &&
 	test_cmp expect output
@@ -539,9 +545,10 @@ cat >expect <<\EOF
 EOF
 
 
-test_expect_success 'status without relative paths' '
+test_expect_success NO_GETTEXT_POISON 'status without relative paths' '
 
-	git config status.relativePaths false
+	git config status.relativePaths false &&
+	test_when_finished "git config --unset status.relativePaths" &&
 	(cd dir1 && git status) >output &&
 	test_cmp expect output
 
@@ -560,6 +567,8 @@ EOF
 
 test_expect_success 'status -s without relative paths' '
 
+	git config status.relativePaths false &&
+	test_when_finished "git config --unset status.relativePaths" &&
 	(cd dir1 && git status -s) >output &&
 	test_cmp expect output
 
@@ -582,7 +591,10 @@ cat <<EOF >expect
 #	untracked
 EOF
 test_expect_success 'dry-run of partial commit excluding new file in index' '
-	git commit --dry-run dir1/modified >output &&
+	git commit --dry-run dir1/modified >output
+'
+
+test_expect_success NO_GETTEXT_POISON 'dry-run of partial commit excluding new file in index: output' '
 	test_cmp expect output
 '
 
@@ -630,13 +642,13 @@ cat >expect <<EOF
 #	output
 #	untracked
 EOF
-test_expect_success 'status submodule summary is disabled by default' '
+test_expect_success NO_GETTEXT_POISON 'status submodule summary is disabled by default' '
 	git status >output &&
 	test_cmp expect output
 '
 
 # we expect the same as the previous test
-test_expect_success 'status --untracked-files=all does not show submodule' '
+test_expect_success NO_GETTEXT_POISON 'status --untracked-files=all does not show submodule' '
 	git status --untracked-files=all >output &&
 	test_cmp expect output
 '
@@ -694,7 +706,7 @@ cat >expect <<EOF
 #	output
 #	untracked
 EOF
-test_expect_success 'status submodule summary' '
+test_expect_success NO_GETTEXT_POISON 'status submodule summary' '
 	git config status.submodulesummary 10 &&
 	git status >output &&
 	test_cmp expect output
@@ -735,8 +747,11 @@ cat >expect <<EOF
 #	untracked
 no changes added to commit (use "git add" and/or "git commit -a")
 EOF
-test_expect_success 'status submodule summary (clean submodule)' '
-	git commit -m "commit submodule" &&
+test_expect_success 'status submodule summary (clean submodule): commit' '
+	git commit -m "commit submodule"
+'
+
+test_expect_success NO_GETTEXT_POISON 'status submodule summary (clean submodule): output' '
 	git config status.submodulesummary 10 &&
 	test_must_fail git commit --dry-run >output &&
 	test_cmp expect output &&
@@ -787,7 +802,7 @@ cat >expect <<EOF
 #	output
 #	untracked
 EOF
-test_expect_success 'commit --dry-run submodule summary (--amend)' '
+test_expect_success NO_GETTEXT_POISON 'commit --dry-run submodule summary (--amend)' '
 	git config status.submodulesummary 10 &&
 	git commit --dry-run --amend >output &&
 	test_cmp expect output
@@ -842,13 +857,13 @@ cat > expect << EOF
 #	untracked
 EOF
 
-test_expect_success '--ignore-submodules=untracked suppresses submodules with untracked content' '
+test_expect_success NO_GETTEXT_POISON '--ignore-submodules=untracked suppresses submodules with untracked content' '
 	echo modified > sm/untracked &&
 	git status --ignore-submodules=untracked > output &&
 	test_cmp expect output
 '
 
-test_expect_success '.gitmodules ignore=untracked suppresses submodules with untracked content' '
+test_expect_success NO_GETTEXT_POISON '.gitmodules ignore=untracked suppresses submodules with untracked content' '
 	git config diff.ignoreSubmodules dirty &&
 	git status >output &&
 	test_cmp expect output &&
@@ -860,7 +875,7 @@ test_expect_success '.gitmodules ignore=untracked suppresses submodules with unt
 	git config --unset diff.ignoreSubmodules
 '
 
-test_expect_success '.git/config ignore=untracked suppresses submodules with untracked content' '
+test_expect_success NO_GETTEXT_POISON '.git/config ignore=untracked suppresses submodules with untracked content' '
 	git config --add -f .gitmodules submodule.subname.ignore none &&
 	git config --add -f .gitmodules submodule.subname.path sm &&
 	git config --add submodule.subname.ignore untracked &&
@@ -871,12 +886,12 @@ test_expect_success '.git/config ignore=untracked suppresses submodules with unt
 	git config --remove-section -f .gitmodules submodule.subname
 '
 
-test_expect_success '--ignore-submodules=dirty suppresses submodules with untracked content' '
+test_expect_success NO_GETTEXT_POISON '--ignore-submodules=dirty suppresses submodules with untracked content' '
 	git status --ignore-submodules=dirty > output &&
 	test_cmp expect output
 '
 
-test_expect_success '.gitmodules ignore=dirty suppresses submodules with untracked content' '
+test_expect_success NO_GETTEXT_POISON '.gitmodules ignore=dirty suppresses submodules with untracked content' '
 	git config diff.ignoreSubmodules dirty &&
 	git status >output &&
 	! test -s actual &&
@@ -888,7 +903,7 @@ test_expect_success '.gitmodules ignore=dirty suppresses submodules with untrack
 	git config --unset diff.ignoreSubmodules
 '
 
-test_expect_success '.git/config ignore=dirty suppresses submodules with untracked content' '
+test_expect_success NO_GETTEXT_POISON '.git/config ignore=dirty suppresses submodules with untracked content' '
 	git config --add -f .gitmodules submodule.subname.ignore none &&
 	git config --add -f .gitmodules submodule.subname.path sm &&
 	git config --add submodule.subname.ignore dirty &&
@@ -899,13 +914,13 @@ test_expect_success '.git/config ignore=dirty suppresses submodules with untrack
 	git config -f .gitmodules  --remove-section submodule.subname
 '
 
-test_expect_success '--ignore-submodules=dirty suppresses submodules with modified content' '
+test_expect_success NO_GETTEXT_POISON '--ignore-submodules=dirty suppresses submodules with modified content' '
 	echo modified > sm/foo &&
 	git status --ignore-submodules=dirty > output &&
 	test_cmp expect output
 '
 
-test_expect_success '.gitmodules ignore=dirty suppresses submodules with modified content' '
+test_expect_success NO_GETTEXT_POISON '.gitmodules ignore=dirty suppresses submodules with modified content' '
 	git config --add -f .gitmodules submodule.subname.ignore dirty &&
 	git config --add -f .gitmodules submodule.subname.path sm &&
 	git status > output &&
@@ -913,7 +928,7 @@ test_expect_success '.gitmodules ignore=dirty suppresses submodules with modifie
 	git config -f .gitmodules  --remove-section submodule.subname
 '
 
-test_expect_success '.git/config ignore=dirty suppresses submodules with modified content' '
+test_expect_success NO_GETTEXT_POISON '.git/config ignore=dirty suppresses submodules with modified content' '
 	git config --add -f .gitmodules submodule.subname.ignore none &&
 	git config --add -f .gitmodules submodule.subname.path sm &&
 	git config --add submodule.subname.ignore dirty &&
@@ -956,12 +971,12 @@ cat > expect << EOF
 #	untracked
 EOF
 
-test_expect_success "--ignore-submodules=untracked doesn't suppress submodules with modified content" '
+test_expect_success NO_GETTEXT_POISON "--ignore-submodules=untracked doesn't suppress submodules with modified content" '
 	git status --ignore-submodules=untracked > output &&
 	test_cmp expect output
 '
 
-test_expect_success ".gitmodules ignore=untracked doesn't suppress submodules with modified content" '
+test_expect_success NO_GETTEXT_POISON ".gitmodules ignore=untracked doesn't suppress submodules with modified content" '
 	git config --add -f .gitmodules submodule.subname.ignore untracked &&
 	git config --add -f .gitmodules submodule.subname.path sm &&
 	git status > output &&
@@ -969,7 +984,7 @@ test_expect_success ".gitmodules ignore=untracked doesn't suppress submodules wi
 	git config -f .gitmodules  --remove-section submodule.subname
 '
 
-test_expect_success ".git/config ignore=untracked doesn't suppress submodules with modified content" '
+test_expect_success NO_GETTEXT_POISON ".git/config ignore=untracked doesn't suppress submodules with modified content" '
 	git config --add -f .gitmodules submodule.subname.ignore none &&
 	git config --add -f .gitmodules submodule.subname.path sm &&
 	git config --add submodule.subname.ignore untracked &&
@@ -1018,12 +1033,12 @@ cat > expect << EOF
 #	untracked
 EOF
 
-test_expect_success "--ignore-submodules=untracked doesn't suppress submodule summary" '
+test_expect_success NO_GETTEXT_POISON "--ignore-submodules=untracked doesn't suppress submodule summary" '
 	git status --ignore-submodules=untracked > output &&
 	test_cmp expect output
 '
 
-test_expect_success ".gitmodules ignore=untracked doesn't suppress submodule summary" '
+test_expect_success NO_GETTEXT_POISON ".gitmodules ignore=untracked doesn't suppress submodule summary" '
 	git config --add -f .gitmodules submodule.subname.ignore untracked &&
 	git config --add -f .gitmodules submodule.subname.path sm &&
 	git status > output &&
@@ -1031,7 +1046,7 @@ test_expect_success ".gitmodules ignore=untracked doesn't suppress submodule sum
 	git config -f .gitmodules  --remove-section submodule.subname
 '
 
-test_expect_success ".git/config ignore=untracked doesn't suppress submodule summary" '
+test_expect_success NO_GETTEXT_POISON ".git/config ignore=untracked doesn't suppress submodule summary" '
 	git config --add -f .gitmodules submodule.subname.ignore none &&
 	git config --add -f .gitmodules submodule.subname.path sm &&
 	git config --add submodule.subname.ignore untracked &&
@@ -1042,11 +1057,11 @@ test_expect_success ".git/config ignore=untracked doesn't suppress submodule sum
 	git config -f .gitmodules  --remove-section submodule.subname
 '
 
-test_expect_success "--ignore-submodules=dirty doesn't suppress submodule summary" '
+test_expect_success NO_GETTEXT_POISON "--ignore-submodules=dirty doesn't suppress submodule summary" '
 	git status --ignore-submodules=dirty > output &&
 	test_cmp expect output
 '
-test_expect_success ".gitmodules ignore=dirty doesn't suppress submodule summary" '
+test_expect_success NO_GETTEXT_POISON ".gitmodules ignore=dirty doesn't suppress submodule summary" '
 	git config --add -f .gitmodules submodule.subname.ignore dirty &&
 	git config --add -f .gitmodules submodule.subname.path sm &&
 	git status > output &&
@@ -1054,7 +1069,7 @@ test_expect_success ".gitmodules ignore=dirty doesn't suppress submodule summary
 	git config -f .gitmodules  --remove-section submodule.subname
 '
 
-test_expect_success ".git/config ignore=dirty doesn't suppress submodule summary" '
+test_expect_success NO_GETTEXT_POISON ".git/config ignore=dirty doesn't suppress submodule summary" '
 	git config --add -f .gitmodules submodule.subname.ignore none &&
 	git config --add -f .gitmodules submodule.subname.path sm &&
 	git config --add submodule.subname.ignore dirty &&
@@ -1086,7 +1101,7 @@ cat > expect << EOF
 no changes added to commit (use "git add" and/or "git commit -a")
 EOF
 
-test_expect_success "--ignore-submodules=all suppresses submodule summary" '
+test_expect_success NO_GETTEXT_POISON "--ignore-submodules=all suppresses submodule summary" '
 	git status --ignore-submodules=all > output &&
 	test_cmp expect output
 '
