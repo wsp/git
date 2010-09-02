@@ -241,7 +241,7 @@ static void add_remove_files(struct string_list *list)
 
 		if (!lstat(p->string, &st)) {
 			if (add_to_cache(p->string, &st, 0))
-				die("updating files failed");
+				die(_("updating files failed"));
 		} else
 			remove_file_from_cache(p->string);
 	}
@@ -268,7 +268,7 @@ static void create_base_index(void)
 	opts.fn = oneway_merge;
 	tree = parse_tree_indirect(head_sha1);
 	if (!tree)
-		die("failed to unpack HEAD tree object");
+		die(_("failed to unpack HEAD tree object"));
 	parse_tree(tree);
 	init_tree_desc(&t, tree->buffer, tree->size);
 	if (unpack_trees(1, &t, &opts))
@@ -296,9 +296,9 @@ static char *prepare_index(int argc, const char **argv, const char *prefix, int 
 		refresh_flags |= REFRESH_UNMERGED;
 	if (interactive) {
 		if (interactive_add(argc, argv, prefix) != 0)
-			die("interactive add failed");
+			die(_("interactive add failed"));
 		if (read_cache_preload(NULL) < 0)
-			die("index file corrupt");
+			die(_("index file corrupt"));
 		commit_style = COMMIT_AS_IS;
 		return get_index_file();
 	}
@@ -307,7 +307,7 @@ static char *prepare_index(int argc, const char **argv, const char *prefix, int 
 		pathspec = get_pathspec(prefix, argv);
 
 	if (read_cache_preload(pathspec) < 0)
-		die("index file corrupt");
+		die(_("index file corrupt"));
 
 	/*
 	 * Non partial, non as-is commit.
@@ -327,7 +327,7 @@ static char *prepare_index(int argc, const char **argv, const char *prefix, int 
 		refresh_cache_or_die(refresh_flags);
 		if (write_cache(fd, active_cache, active_nr) ||
 		    close_lock_file(&index_lock))
-			die("unable to write new_index file");
+			die(_("unable to write new_index file"));
 		commit_style = COMMIT_NORMAL;
 		return index_lock.filename;
 	}
@@ -347,7 +347,7 @@ static char *prepare_index(int argc, const char **argv, const char *prefix, int 
 		if (active_cache_changed) {
 			if (write_cache(fd, active_cache, active_nr) ||
 			    commit_locked_index(&index_lock))
-				die("unable to write new_index file");
+				die(_("unable to write new_index file"));
 		} else {
 			rollback_lock_file(&index_lock);
 		}
@@ -377,7 +377,7 @@ static char *prepare_index(int argc, const char **argv, const char *prefix, int 
 	commit_style = COMMIT_PARTIAL;
 
 	if (in_merge)
-		die("cannot do a partial commit during a merge.");
+		die(_("cannot do a partial commit during a merge."));
 
 	memset(&partial, 0, sizeof(partial));
 	partial.strdup_strings = 1;
@@ -386,14 +386,14 @@ static char *prepare_index(int argc, const char **argv, const char *prefix, int 
 
 	discard_cache();
 	if (read_cache() < 0)
-		die("cannot read the index");
+		die(_("cannot read the index"));
 
 	fd = hold_locked_index(&index_lock, 1);
 	add_remove_files(&partial);
 	refresh_cache(REFRESH_QUIET);
 	if (write_cache(fd, active_cache, active_nr) ||
 	    close_lock_file(&index_lock))
-		die("unable to write new_index file");
+		die(_("unable to write new_index file"));
 
 	fd = hold_lock_file_for_update(&false_lock,
 				       git_path("next-index-%"PRIuMAX,
@@ -406,7 +406,7 @@ static char *prepare_index(int argc, const char **argv, const char *prefix, int 
 
 	if (write_cache(fd, active_cache, active_nr) ||
 	    close_lock_file(&false_lock))
-		die("unable to write temporary index file");
+		die(_("unable to write temporary index file"));
 
 	discard_cache();
 	read_cache_from(false_lock.filename);
@@ -453,7 +453,7 @@ static int is_a_merge(const unsigned char *sha1)
 {
 	struct commit *commit = lookup_commit(sha1);
 	if (!commit || parse_commit(commit))
-		die("could not parse HEAD commit");
+		die(_("could not parse HEAD commit"));
 	return !!(commit->parents && commit->parents->next);
 }
 
@@ -472,13 +472,13 @@ static void determine_author_info(void)
 
 		a = strstr(use_message_buffer, "\nauthor ");
 		if (!a)
-			die("invalid commit: %s", use_message);
+			die(_("invalid commit: %s"), use_message);
 
 		lb = strchrnul(a + strlen("\nauthor "), '<');
 		rb = strchrnul(lb, '>');
 		eol = strchrnul(rb, '\n');
 		if (!*lb || !*rb || !*eol)
-			die("invalid commit: %s", use_message);
+			die(_("invalid commit: %s"), use_message);
 
 		if (lb == a + strlen("\nauthor "))
 			/* \nauthor <foo@example.com> */
@@ -496,7 +496,7 @@ static void determine_author_info(void)
 		const char *rb = strchr(force_author, '>');
 
 		if (!lb || !rb)
-			die("malformed --author parameter");
+			die(_("malformed --author parameter"));
 		name = xstrndup(force_author, lb - force_author);
 		email = xstrndup(lb + 2, rb - (lb + 2));
 	}
@@ -570,33 +570,33 @@ static int prepare_to_commit(const char *index_file, const char *prefix,
 		hook_arg1 = "message";
 	} else if (logfile && !strcmp(logfile, "-")) {
 		if (isatty(0))
-			fprintf(stderr, "(reading log message from standard input)\n");
+			fprintf(stderr, _("(reading log message from standard input)\n"));
 		if (strbuf_read(&sb, 0, 0) < 0)
-			die_errno("could not read log from standard input");
+			die_errno(_("could not read log from standard input"));
 		hook_arg1 = "message";
 	} else if (logfile) {
 		if (strbuf_read_file(&sb, logfile, 0) < 0)
-			die_errno("could not read log file '%s'",
+			die_errno(_("could not read log file '%s'"),
 				  logfile);
 		hook_arg1 = "message";
 	} else if (use_message) {
 		buffer = strstr(use_message_buffer, "\n\n");
 		if (!buffer || buffer[2] == '\0')
-			die("commit has empty message");
+			die(_("commit has empty message"));
 		strbuf_add(&sb, buffer + 2, strlen(buffer + 2));
 		hook_arg1 = "commit";
 		hook_arg2 = use_message;
 	} else if (!stat(git_path("MERGE_MSG"), &statbuf)) {
 		if (strbuf_read_file(&sb, git_path("MERGE_MSG"), 0) < 0)
-			die_errno("could not read MERGE_MSG");
+			die_errno(_("could not read MERGE_MSG"));
 		hook_arg1 = "merge";
 	} else if (!stat(git_path("SQUASH_MSG"), &statbuf)) {
 		if (strbuf_read_file(&sb, git_path("SQUASH_MSG"), 0) < 0)
-			die_errno("could not read SQUASH_MSG");
+			die_errno(_("could not read SQUASH_MSG"));
 		hook_arg1 = "squash";
 	} else if (template_file && !stat(template_file, &statbuf)) {
 		if (strbuf_read_file(&sb, template_file, 0) < 0)
-			die_errno("could not read '%s'", template_file);
+			die_errno(_("could not read '%s'"), template_file);
 		hook_arg1 = "template";
 	}
 
@@ -609,7 +609,7 @@ static int prepare_to_commit(const char *index_file, const char *prefix,
 
 	fp = fopen(git_path(commit_editmsg), "w");
 	if (fp == NULL)
-		die_errno("could not open '%s'", git_path(commit_editmsg));
+		die_errno(_("could not open '%s'"), git_path(commit_editmsg));
 
 	if (cleanup_mode != CLEANUP_NONE)
 		stripspace(&sb, 0);
@@ -633,7 +633,7 @@ static int prepare_to_commit(const char *index_file, const char *prefix,
 	}
 
 	if (fwrite(sb.buf, 1, sb.len, fp) < sb.len)
-		die_errno("could not write commit template");
+		die_errno(_("could not write commit template"));
 
 	strbuf_release(&sb);
 
@@ -702,7 +702,7 @@ static int prepare_to_commit(const char *index_file, const char *prefix,
 		const char *parent = "HEAD";
 
 		if (!active_nr && read_cache() < 0)
-			die("Cannot read index");
+			die(_("Cannot read index"));
 
 		if (amend)
 			parent = "HEAD^1";
@@ -734,7 +734,7 @@ static int prepare_to_commit(const char *index_file, const char *prefix,
 		active_cache_tree = cache_tree();
 	if (cache_tree_update(active_cache_tree,
 			      active_cache, active_nr, 0, 0) < 0) {
-		error("Error building trees");
+		error(_("Error building trees"));
 		return 0;
 	}
 
@@ -749,7 +749,7 @@ static int prepare_to_commit(const char *index_file, const char *prefix,
 		snprintf(index, sizeof(index), "GIT_INDEX_FILE=%s", index_file);
 		if (launch_editor(git_path(commit_editmsg), NULL, env)) {
 			fprintf(stderr,
-			"Please supply the message using either -m or -F option.\n");
+			_("Please supply the message using either -m or -F option.\n"));
 			exit(1);
 		}
 	}
@@ -829,7 +829,7 @@ static const char *find_author_by_nickname(const char *name)
 		format_commit_message(commit, "%an <%ae>", &buf, &ctx);
 		return strbuf_detach(&buf, NULL);
 	}
-	die("No existing author found with '%s'", name);
+	die(_("No existing author found with '%s'"), name);
 }
 
 
@@ -844,7 +844,7 @@ static void handle_untracked_files_arg(struct wt_status *s)
 	else if (!strcmp(untracked_files_arg, "all"))
 		s->show_untracked_files = SHOW_ALL_UNTRACKED_FILES;
 	else
-		die("Invalid untracked files mode '%s'", untracked_files_arg);
+		die(_("Invalid untracked files mode '%s'"), untracked_files_arg);
 }
 
 static int parse_and_validate_options(int argc, const char *argv[],
@@ -861,7 +861,7 @@ static int parse_and_validate_options(int argc, const char *argv[],
 		force_author = find_author_by_nickname(force_author);
 
 	if (force_author && renew_authorship)
-		die("Using both --reset-author and --author does not make sense");
+		die(_("Using both --reset-author and --author does not make sense"));
 
 	if (logfile || message.len || use_message)
 		use_editor = 0;
@@ -875,7 +875,7 @@ static int parse_and_validate_options(int argc, const char *argv[],
 
 	/* Sanity check options */
 	if (amend && initial_commit)
-		die("You have nothing to amend.");
+		die(_("You have nothing to amend."));
 	if (amend && in_merge)
 		die("You are in the middle of a merge -- cannot amend.");
 
@@ -886,15 +886,15 @@ static int parse_and_validate_options(int argc, const char *argv[],
 	if (logfile)
 		f++;
 	if (f > 1)
-		die("Only one of -c/-C/-F can be used.");
+		die(_("Only one of -c/-C/-F can be used."));
 	if (message.len && f > 0)
-		die("Option -m cannot be combined with -c/-C/-F.");
+		die(_("Option -m cannot be combined with -c/-C/-F."));
 	if (edit_message)
 		use_message = edit_message;
 	if (amend && !use_message)
 		use_message = "HEAD";
 	if (!use_message && renew_authorship)
-		die("--reset-author can be used only with -C, -c or --amend.");
+		die(_("--reset-author can be used only with -C, -c or --amend."));
 	if (use_message) {
 		unsigned char sha1[20];
 		static char utf8[] = "UTF-8";
@@ -903,10 +903,10 @@ static int parse_and_validate_options(int argc, const char *argv[],
 		struct commit *commit;
 
 		if (get_sha1(use_message, sha1))
-			die("could not lookup commit %s", use_message);
+			die(_("could not lookup commit %s"), use_message);
 		commit = lookup_commit_reference(sha1);
 		if (!commit || parse_commit(commit))
-			die("could not parse commit %s", use_message);
+			die(_("could not parse commit %s"), use_message);
 
 		enc = strstr(commit->buffer, "\nencoding");
 		if (enc) {
@@ -934,13 +934,13 @@ static int parse_and_validate_options(int argc, const char *argv[],
 	}
 
 	if (!!also + !!only + !!all + !!interactive > 1)
-		die("Only one of --include/--only/--all/--interactive can be used.");
+		die(_("Only one of --include/--only/--all/--interactive can be used."));
 	if (argc == 0 && (also || (only && !amend)))
-		die("No paths with --include/--only does not make sense.");
+		die(_("No paths with --include/--only does not make sense."));
 	if (argc == 0 && only && amend)
-		only_include_assumed = "Clever... amending the last one with dirty index.";
+		only_include_assumed = _("Clever... amending the last one with dirty index.");
 	if (argc > 0 && !also && !only)
-		only_include_assumed = "Explicit paths specified without -i nor -o; assuming --only paths...";
+		only_include_assumed = _("Explicit paths specified without -i nor -o; assuming --only paths...");
 	if (!cleanup_arg || !strcmp(cleanup_arg, "default"))
 		cleanup_mode = use_editor ? CLEANUP_ALL : CLEANUP_SPACE;
 	else if (!strcmp(cleanup_arg, "verbatim"))
@@ -950,14 +950,14 @@ static int parse_and_validate_options(int argc, const char *argv[],
 	else if (!strcmp(cleanup_arg, "strip"))
 		cleanup_mode = CLEANUP_ALL;
 	else
-		die("Invalid cleanup mode %s", cleanup_arg);
+		die(_("Invalid cleanup mode %s"), cleanup_arg);
 
 	handle_untracked_files_arg(s);
 
 	if (all && argc > 0)
-		die("Paths with -a does not make sense.");
+		die(_("Paths with -a does not make sense."));
 	else if (interactive && argc > 0)
-		die("Paths with --interactive does not make sense.");
+		die(_("Paths with --interactive does not make sense."));
 
 	if (null_termination && status_format == STATUS_FORMAT_LONG)
 		status_format = STATUS_FORMAT_PORCELAIN;
@@ -1036,7 +1036,7 @@ static int git_status_config(const char *k, const char *v, void *cb)
 		else if (!strcmp(v, "all"))
 			s->show_untracked_files = SHOW_ALL_UNTRACKED_FILES;
 		else
-			return error("Invalid untracked files mode '%s'", v);
+			return error(_("Invalid untracked files mode '%s'"), v);
 		return 0;
 	}
 	return git_diff_ui_config(k, v, NULL);
@@ -1139,9 +1139,9 @@ static void print_summary(const char *prefix, const unsigned char *sha1)
 
 	commit = lookup_commit(sha1);
 	if (!commit)
-		die("couldn't look up newly created commit");
+		die(_("couldn't look up newly created commit"));
 	if (!commit || parse_commit(commit))
-		die("could not parse newly created commit");
+		die(_("could not parse newly created commit"));
 
 	strbuf_addstr(&format, "format:%h] %s");
 
@@ -1291,7 +1291,7 @@ int cmd_commit(int argc, const char **argv, const char *prefix)
 			reflog_msg = "commit (amend)";
 		commit = lookup_commit(head_sha1);
 		if (!commit || parse_commit(commit))
-			die("could not parse HEAD commit");
+			die(_("could not parse HEAD commit"));
 
 		for (c = commit->parents; c; c = c->next)
 			pptr = &commit_list_insert(c->item, pptr)->next;
@@ -1304,19 +1304,19 @@ int cmd_commit(int argc, const char **argv, const char *prefix)
 		pptr = &commit_list_insert(lookup_commit(head_sha1), pptr)->next;
 		fp = fopen(git_path("MERGE_HEAD"), "r");
 		if (fp == NULL)
-			die_errno("could not open '%s' for reading",
+			die_errno(_("could not open '%s' for reading"),
 				  git_path("MERGE_HEAD"));
 		while (strbuf_getline(&m, fp, '\n') != EOF) {
 			unsigned char sha1[20];
 			if (get_sha1_hex(m.buf, sha1) < 0)
-				die("Corrupt MERGE_HEAD file (%s)", m.buf);
+				die(_("Corrupt MERGE_HEAD file (%s)"), m.buf);
 			pptr = &commit_list_insert(lookup_commit(sha1), pptr)->next;
 		}
 		fclose(fp);
 		strbuf_release(&m);
 		if (!stat(git_path("MERGE_MODE"), &statbuf)) {
 			if (strbuf_read_file(&sb, git_path("MERGE_MODE"), 0) < 0)
-				die_errno("could not read MERGE_MODE");
+				die_errno(_("could not read MERGE_MODE"));
 			if (!strcmp(sb.buf, "no-ff"))
 				allow_fast_forward = 0;
 		}
@@ -1333,7 +1333,7 @@ int cmd_commit(int argc, const char **argv, const char *prefix)
 	if (strbuf_read_file(&sb, git_path(commit_editmsg), 0) < 0) {
 		int saved_errno = errno;
 		rollback_index_files();
-		die("could not read commit message: %s", strerror(saved_errno));
+		die(_("could not read commit message: %s"), strerror(saved_errno));
 	}
 
 	/* Truncate the message just before the diff, if any. */
@@ -1347,7 +1347,7 @@ int cmd_commit(int argc, const char **argv, const char *prefix)
 		stripspace(&sb, cleanup_mode == CLEANUP_ALL);
 	if (message_is_empty(&sb) && !allow_empty_message) {
 		rollback_index_files();
-		fprintf(stderr, "Aborting commit due to empty commit message.\n");
+		fprintf(stderr, _("Aborting commit due to empty commit message.\n"));
 		exit(1);
 	}
 
@@ -1355,7 +1355,7 @@ int cmd_commit(int argc, const char **argv, const char *prefix)
 			fmt_ident(author_name, author_email, author_date,
 				IDENT_ERROR_ON_NO_NAME))) {
 		rollback_index_files();
-		die("failed to write commit object");
+		die(_("failed to write commit object"));
 	}
 
 	ref_lock = lock_any_ref_for_update("HEAD",
@@ -1372,11 +1372,11 @@ int cmd_commit(int argc, const char **argv, const char *prefix)
 
 	if (!ref_lock) {
 		rollback_index_files();
-		die("cannot lock HEAD ref");
+		die(_("cannot lock HEAD ref"));
 	}
 	if (write_ref_sha1(ref_lock, commit_sha1, sb.buf) < 0) {
 		rollback_index_files();
-		die("cannot update HEAD ref");
+		die(_("cannot update HEAD ref"));
 	}
 
 	unlink(git_path("MERGE_HEAD"));
@@ -1385,9 +1385,9 @@ int cmd_commit(int argc, const char **argv, const char *prefix)
 	unlink(git_path("SQUASH_MSG"));
 
 	if (commit_index_files())
-		die ("Repository has been updated, but unable to write\n"
+		die (_("Repository has been updated, but unable to write\n"
 		     "new_index file. Check that disk is not full or quota is\n"
-		     "not exceeded, and then \"git reset HEAD\" to recover.");
+		     "not exceeded, and then \"git reset HEAD\" to recover."));
 
 	rerere(0);
 	run_hook(get_index_file(), "post-commit", NULL);
