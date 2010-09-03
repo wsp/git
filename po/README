@@ -1,0 +1,58 @@
+Core GIT Translations
+=====================
+
+This directory holds the translations for the core of Git. This
+document describes how to add to and maintain these translations.
+
+
+Generating a .pot file
+----------------------
+
+The po/git.pot file contains a message catalog extracted from Git's
+sources. You need to generate it to add new translations with
+msginit(1), or update existing ones with msgmerge(1).
+
+Since the file can be automatically generated it's not checked into
+git.git. To generate it do, at the top-level:
+
+    make pot
+
+
+Initializing a .po file
+-----------------------
+
+To add a new translation first generate git.pot (see above) and then
+in the po/ directory do:
+
+    msginit --locale=XX
+
+Where XX is your locale, e.g. "is", "de" or "pt_BR".
+
+Then edit the automatically generated copyright info in your new XX.po
+to be correct, e.g. for Icelandic:
+    
+    @@ -1,6 +1,6 @@
+    -# Icelandic translations for PACKAGE package.
+    -# Copyright (C) 2010 THE PACKAGE'S COPYRIGHT HOLDER
+    -# This file is distributed under the same license as the PACKAGE package.
+    +# Icelandic translations for Git.
+    +# Copyright (C) 2010 Ævar Arnfjörð Bjarmason <avarab@gmail.com>
+    +# This file is distributed under the same license as the Git package.
+     # Ævar Arnfjörð Bjarmason <avarab@gmail.com>, 2010.
+
+And change references to PACKAGE VERSION in the PO Header Entry to
+just "Git":
+
+    perl -pi -e 's/(?<="Project-Id-Version: )PACKAGE VERSION/Git/' XX.po
+
+
+Updating a .po file
+-------------------
+
+If there's an existing *.po file for your language but you need to
+update the translation you first need to generate git.pot (see above)
+and then in the po/ directory do:
+
+    msgmerge --add-location --backup=off -U XX.po git.pot
+
+Where XX.po is the file you want to update.
