@@ -11,8 +11,12 @@ extern void git_setup_gettext(void);
 #ifdef NO_GETTEXT
 #define _(s) (s)
 #else
+#ifndef GETTEXT_POISON
 #include <libintl.h>
 #define _(s) gettext(s)
+#else
+#define _(s) "# GETTEXT POISON #"
+#endif
 #endif
 
 #endif
