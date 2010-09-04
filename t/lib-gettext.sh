@@ -11,7 +11,7 @@ export GIT_TEXTDOMAINDIR GIT_PO_PATH
 
 . "$GIT_BUILD_DIR"/git-sh-i18n
 
-if test_have_prereq GETTEXT
+if test_have_prereq GETTEXT && test_have_prereq NO_GETTEXT_POISON
 then
 	# is_IS.UTF-8 on Solaris and FreeBSD, is_IS.utf8 on Debian
 	is_IS_locale=$(locale -a | sed -n '/^is_IS\.[uU][tT][fF]-*8$/{
@@ -38,5 +38,11 @@ then
 else
 	# Only run some tests when we don't have gettext support
 	test_set_prereq NO_GETTEXT
-	say "# lib-gettext: No GETTEXT support available"
+
+	if test_have_prereq NO_GETTEXT_POISON
+	then
+		say "# lib-gettext: GETTEXT_POISON defined, can't test gettext"
+	else
+		say "# lib-gettext: No GETTEXT support available"
+	fi
 fi
