@@ -476,8 +476,10 @@ static struct notes_tree *init_notes_check(const char *subcommand)
 	t = &default_notes_tree;
 
 	if (prefixcmp(t->ref, "refs/notes/"))
-		die("Refusing to %s notes in %s (outside of refs/notes/)",
-		    subcommand, t->ref);
+		/* TRANSLATORS: The first %s is one of "git notes ACTION",
+		   e.g. "add", "copy", "append" etc. */
+		die(_("Refusing to %s notes in %s (outside of refs/notes/)"),
+		    _(subcommand), t->ref);
 	return t;
 }
 
@@ -500,7 +502,7 @@ static int list(int argc, const char **argv, const char *prefix)
 		usage_with_options(git_notes_list_usage, options);
 	}
 
-	t = init_notes_check("list");
+	t = init_notes_check(N_("list"));
 	if (argc) {
 		if (get_sha1(argv[0], object))
 			die(_("Failed to resolve '%s' as a valid ref."), argv[0]);
@@ -557,7 +559,7 @@ static int add(int argc, const char **argv, const char *prefix)
 	if (get_sha1(object_ref, object))
 		die(_("Failed to resolve '%s' as a valid ref."), object_ref);
 
-	t = init_notes_check("add");
+	t = init_notes_check(N_("add"));
 	note = get_note(t, object);
 
 	if (note) {
@@ -633,7 +635,7 @@ static int copy(int argc, const char **argv, const char *prefix)
 	if (get_sha1(object_ref, object))
 		die(_("Failed to resolve '%s' as a valid ref."), object_ref);
 
-	t = init_notes_check("copy");
+	t = init_notes_check(N_("copy"));
 	note = get_note(t, object);
 
 	if (note) {
@@ -749,7 +751,7 @@ static int show(int argc, const char **argv, const char *prefix)
 	if (get_sha1(object_ref, object))
 		die(_("Failed to resolve '%s' as a valid ref."), object_ref);
 
-	t = init_notes_check("show");
+	t = init_notes_check(N_("show"));
 	note = get_note(t, object);
 
 	if (!note)
@@ -786,7 +788,7 @@ static int remove_cmd(int argc, const char **argv, const char *prefix)
 	if (get_sha1(object_ref, object))
 		die(_("Failed to resolve '%s' as a valid ref."), object_ref);
 
-	t = init_notes_check("remove");
+	t = init_notes_check(N_("remove"));
 
 	retval = remove_note(t, object);
 	if (retval)
@@ -820,7 +822,7 @@ static int prune(int argc, const char **argv, const char *prefix)
 		usage_with_options(git_notes_prune_usage, options);
 	}
 
-	t = init_notes_check("prune");
+	t = init_notes_check(N_("prune"));
 
 	prune_notes(t, (verbose ? NOTES_PRUNE_VERBOSE : 0) |
 		(show_only ? NOTES_PRUNE_VERBOSE|NOTES_PRUNE_DRYRUN : 0) );
