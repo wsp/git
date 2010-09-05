@@ -79,7 +79,7 @@ static void parse_args(int argc, const char **argv)
 			OPT_END(),
 		};
 		if (parse_options_concat(options, ARRAY_SIZE(options), cp_extra))
-			die("program error");
+			die(_("program error"));
 	}
 
 	commit_argc = parse_options(argc, argv, NULL, options, usage_str,
@@ -151,7 +151,7 @@ static char *get_encoding(const char *message)
 	const char *p = message, *eol;
 
 	if (!p)
-		die ("Could not read commit message of %s",
+		die (_("Could not read commit message of %s"),
 				sha1_to_hex(commit->object.sha1));
 	while (*p && *p != '\n') {
 		for (eol = p + 1; *eol && *eol != '\n'; eol++)
@@ -185,7 +185,7 @@ static void set_author_ident_env(const char *message)
 {
 	const char *p = message;
 	if (!p)
-		die ("Could not read commit message of %s",
+		die (_("Could not read commit message of %s"),
 				sha1_to_hex(commit->object.sha1));
 	while (*p && *p != '\n') {
 		const char *eol;
@@ -199,7 +199,7 @@ static void set_author_ident_env(const char *message)
 			line = xmemdupz(p, eol - p);
 			email = strchr(line, '<');
 			if (!email)
-				die ("Could not extract author email from %s",
+				die (_("Could not extract author email from %s"),
 					sha1_to_hex(commit->object.sha1));
 			if (email == line)
 				pend = line;
@@ -211,7 +211,7 @@ static void set_author_ident_env(const char *message)
 			email++;
 			timestamp = strchr(email, '>');
 			if (!timestamp)
-				die ("Could not extract author time from %s",
+				die (_("Could not extract author time from %s"),
 					sha1_to_hex(commit->object.sha1));
 			*timestamp = '\0';
 			for (timestamp++; *timestamp && isspace(*timestamp);
@@ -227,7 +227,7 @@ static void set_author_ident_env(const char *message)
 		if (*p == '\n')
 			p++;
 	}
-	die ("No author information found in %s",
+	die (_("No author information found in %s"),
 			sha1_to_hex(commit->object.sha1));
 }
 
@@ -264,10 +264,10 @@ static void write_message(struct strbuf *msgbuf, const char *filename)
 	int msg_fd = hold_lock_file_for_update(&msg_file, filename,
 					       LOCK_DIE_ON_ERROR);
 	if (write_in_full(msg_fd, msgbuf->buf, msgbuf->len) < 0)
-		die_errno("Could not write to %s.", filename);
+		die_errno(_("Could not write to %s."), filename);
 	strbuf_release(msgbuf);
 	if (commit_lock_file(&msg_file) < 0)
-		die("Error wrapping up %s", filename);
+		die(_("Error wrapping up %s"), filename);
 }
 
 static struct tree *empty_tree(void)
@@ -405,10 +405,10 @@ static int do_pick_commit(void)
 		 * to work on.
 		 */
 		if (write_cache_as_tree(head, 0, NULL))
-			die ("Your index file is unmerged.");
+			die (_("Your index file is unmerged."));
 	} else {
 		if (get_sha1("HEAD", head))
-			die ("You do not have a valid HEAD");
+			die (_("You do not have a valid HEAD"));
 		if (index_differs_from("HEAD", 0))
 			die_dirty_index(me);
 	}
@@ -416,7 +416,7 @@ static int do_pick_commit(void)
 
 	if (!commit->parents) {
 		if (action == REVERT)
-			die ("Cannot revert a root commit");
+			die (_("Cannot revert a root commit"));
 		parent = NULL;
 	}
 	else if (commit->parents->next) {
@@ -425,7 +425,7 @@ static int do_pick_commit(void)
 		struct commit_list *p;
 
 		if (!mainline)
-			die("Commit %s is a merge but no -m option was given.",
+			die(_("Commit %s is a merge but no -m option was given."),
 			    sha1_to_hex(commit->object.sha1));
 
 		for (cnt = 1, p = commit->parents;
@@ -433,11 +433,11 @@ static int do_pick_commit(void)
 		     cnt++)
 			p = p->next;
 		if (cnt != mainline || !p)
-			die("Commit %s does not have parent %d",
+			die(_("Commit %s does not have parent %d"),
 			    sha1_to_hex(commit->object.sha1), mainline);
 		parent = p->item;
 	} else if (0 < mainline)
-		die("Mainline was specified but commit %s is not a merge.",
+		die(_("Mainline was specified but commit %s is not a merge."),
 		    sha1_to_hex(commit->object.sha1));
 	else
 		parent = commit->parents->item;
@@ -450,7 +450,7 @@ static int do_pick_commit(void)
 		    me, sha1_to_hex(parent->object.sha1));
 
 	if (get_message(commit->buffer, &msg) != 0)
-		die("Cannot get commit message for %s",
+		die(_("Cannot get commit message for %s"),
 				sha1_to_hex(commit->object.sha1));
 
 	/*
@@ -541,10 +541,10 @@ static void prepare_revs(struct rev_info *revs)
 		usage(*revert_or_cherry_pick_usage());
 
 	if (prepare_revision_walk(revs))
-		die("revision walk setup failed");
+		die(_("revision walk setup failed"));
 
 	if (!revs->commits)
-		die("empty commit set passed");
+		die(_("empty commit set passed"));
 }
 
 static int revert_or_cherry_pick(int argc, const char **argv)
@@ -558,13 +558,13 @@ static int revert_or_cherry_pick(int argc, const char **argv)
 
 	if (allow_ff) {
 		if (signoff)
-			die("cherry-pick --ff cannot be used with --signoff");
+			die(_("cherry-pick --ff cannot be used with --signoff"));
 		if (no_commit)
-			die("cherry-pick --ff cannot be used with --no-commit");
+			die(_("cherry-pick --ff cannot be used with --no-commit"));
 		if (no_replay)
-			die("cherry-pick --ff cannot be used with -x");
+			die(_("cherry-pick --ff cannot be used with -x"));
 		if (edit)
-			die("cherry-pick --ff cannot be used with --edit");
+			die(_("cherry-pick --ff cannot be used with --edit"));
 	}
 
 	if (read_cache() < 0)
