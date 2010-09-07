@@ -988,6 +988,7 @@ if test -z "$GETTEXT_POISON"
 then
 	test_set_prereq NO_GETTEXT_POISON
 else
+	test_set_prereq GETTEXT_POISON
 	GIT_INTERNAL_GETTEXT_GETTEXT_POISON=YesPlease
 	export GIT_INTERNAL_GETTEXT_GETTEXT_POISON
 fi
