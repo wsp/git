@@ -81,7 +81,7 @@ test_expect_success 'revert after renaming branch' '
 
 '
 
-test_expect_success 'revert forbidden on dirty working tree' '
+test_expect_success NO_GETTEXT_POISON 'revert forbidden on dirty working tree' '
 
 	echo content >extra_file &&
 	git add extra_file &&
