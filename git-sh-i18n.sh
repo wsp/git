@@ -28,44 +28,61 @@ else
 fi
 export TEXTDOMAINDIR
 
-if test -z "$GIT_INTERNAL_GETTEXT_TEST_FALLBACKS" && type gettext.sh >/dev/null 2>&1
+if test -z "$GIT_INTERNAL_GETTEXT_GETTEXT_POISON"
 then
-	# This is GNU libintl's gettext.sh, we don't need to do anything
-	# else than setting up the environment and loading gettext.sh
-	GIT_INTERNAL_GETTEXT_SH_SCHEME=gnu
-	export GIT_INTERNAL_GETTEXT_SH_SCHEME
+	if test -z "$GIT_INTERNAL_GETTEXT_TEST_FALLBACKS" && type gettext.sh >/dev/null 2>&1
+	then
+		# This is GNU libintl's gettext.sh, we don't need to do anything
+		# else than setting up the environment and loading gettext.sh
+		GIT_INTERNAL_GETTEXT_SH_SCHEME=gnu
+		export GIT_INTERNAL_GETTEXT_SH_SCHEME
 
-	# Try to use libintl's gettext.sh, or fall back to English if we
-	# can't.
-	. gettext.sh
-elif test -z "$GIT_INTERNAL_GETTEXT_TEST_FALLBACKS" && test "$(gettext -h 2>&1)" = "-h"
-then
-	# We don't have gettext.sh, but there's a gettext binary in our
-	# path. This is probably Solaris or something like it which has a
-	# gettext implementation that isn't GNU libintl.
-	GIT_INTERNAL_GETTEXT_SH_SCHEME=solaris
-	export GIT_INTERNAL_GETTEXT_SH_SCHEME
+		# Try to use libintl's gettext.sh, or fall back to English if we
+		# can't.
+		. gettext.sh
+	elif test -z "$GIT_INTERNAL_GETTEXT_TEST_FALLBACKS" && test "$(gettext -h 2>&1)" = "-h"
+	then
+		# We don't have gettext.sh, but there's a gettext binary in our
+		# path. This is probably Solaris or something like it which has a
+		# gettext implementation that isn't GNU libintl.
+		GIT_INTERNAL_GETTEXT_SH_SCHEME=solaris
+		export GIT_INTERNAL_GETTEXT_SH_SCHEME
 
-	# Solaris has a gettext(1) but no eval_gettext(1)
-	eval_gettext () {
-		gettext_out=$(gettext "$1")
-		gettext_eval="printf '%s' \"$gettext_out\""
-		printf "%s" "`eval \"$gettext_eval\"`"
-	}
+		# Solaris has a gettext(1) but no eval_gettext(1)
+		eval_gettext () {
+			gettext_out=$(gettext "$1")
+			gettext_eval="printf '%s' \"$gettext_out\""
+			printf "%s" "`eval \"$gettext_eval\"`"
+		}
+	else
+		# Since gettext.sh isn't available we'll have to define our own
+		# dummy pass-through functions.
+
+		# Tell our tests that we don't have the real gettext.sh
+		GIT_INTERNAL_GETTEXT_SH_SCHEME=fallthrough
+		export GIT_INTERNAL_GETTEXT_SH_SCHEME
+
+		gettext () {
+			printf "%s" "$1"
+		}
+
+		eval_gettext () {
+			gettext_eval="printf '%s' \"$1\""
+			printf "%s" "`eval \"$gettext_eval\"`"
+		}
+	fi
 else
-	# Since gettext.sh isn't available we'll have to define our own
-	# dummy pass-through functions.
+	# Emit garbage under GETTEXT_POISON=YesPlease. Unlike the C tests
+	# this relies on an environment variable
 
-	# Tell our tests that we don't have the real gettext.sh
-	GIT_INTERNAL_GETTEXT_SH_SCHEME=fallthrough
+	GIT_INTERNAL_GETTEXT_SH_SCHEME=poison
 	export GIT_INTERNAL_GETTEXT_SH_SCHEME
 
 	gettext () {
-		printf "%s" "$1"
+		printf "%s" "# GETTEXT POISON #"
 	}
 
 	eval_gettext () {
-		gettext_eval="printf '%s' \"$1\""
-		printf "%s" "`eval \"$gettext_eval\"`"
+		printf "%s" "# GETTEXT POISON #"
 	}
 fi
