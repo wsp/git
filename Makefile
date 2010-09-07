@@ -49,6 +49,11 @@ all::
 # FreeBSD can use either, but MinGW and some others need to use
 # libcharset.h's locale_charset() instead.
 #
+# Define GNU_GETTEXT if you're using the GNU implementation of
+# libintl. We define this everywhere except on Solaris, which has its
+# own gettext implementation. If GNU_GETTEXT is set we'll use GNU
+# extensions like `msgfmt --check'.
+#
 # Define GETTEXT_POISON to turn all strings that use gettext into
 # gibberish. This option should only be used by the Git developers to
 # check that the Git gettext implementation itself is sane.
@@ -795,6 +800,10 @@ ifndef NO_GETTEXT
 	# Systems that use GNU gettext and glibc are the exception
 	NEEDS_LIBINTL = YesPlease
 
+	# Systems that don't use GNU gettext are the exception. Only
+	# Solaris has a mature non-GNU gettext implementation.
+	GNU_GETTEXT = YesPlease
+
 	# Since we assume a GNU gettext by default we also assume a
 	# GNU-like langinfo.h by default
 	HAVE_LIBCHARSET_H =
@@ -887,6 +896,9 @@ ifeq ($(uname_S),SunOS)
 	NO_MKDTEMP = YesPlease
 	NO_MKSTEMPS = YesPlease
 	NO_REGEX = YesPlease
+ifndef NO_GETTEXT
+	GNU_GETTEXT =
+endif
 	ifeq ($(uname_R),5.6)
 		SOCKLEN_T = int
 		NO_HSTRERROR = YesPlease
