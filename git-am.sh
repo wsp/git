@@ -93,7 +93,7 @@ go_next () {
 
 cannot_fallback () {
 	echo "$1"
-	echo "Cannot fall back to three-way merge."
+	gettext "Cannot fall back to three-way merge."; echo
 	exit 1
 }
 
@@ -629,7 +629,7 @@ do
 
 	if test -z "$GIT_AUTHOR_EMAIL"
 	then
-		echo "Patch does not have a valid e-mail address."
+		gettext "Patch does not have a valid e-mail address."; echo
 		stop_here $this
 	fi
 
@@ -680,7 +680,7 @@ do
 	    action=again
 	    while test "$action" = again
 	    do
-		echo "Commit Body is:"
+		gettext "Commit Body is:"; echo
 		echo "--------------------------"
 		cat "$dotest/final-commit"
 		echo "--------------------------"
