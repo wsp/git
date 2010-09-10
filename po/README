@@ -2,7 +2,8 @@ Core GIT Translations
 =====================
 
 This directory holds the translations for the core of Git. This
-document describes how to add to and maintain these translations.
+document describes how to add to and maintain these translations, and
+how to mark source strings for translation.
 
 
 Generating a .pot file
@@ -69,3 +70,42 @@ changed PO file with `msgfmt --check`, the --check option flags many
 common errors, e.g. missing printf format strings, or translated
 messages that deviate from the originals in whether they begin/end
 with a newline or not.
+
+
+Marking strings for translation
+-------------------------------
+
+Before strings can be translated they first have to be marked for
+translation.
+
+Git uses an internationalization interface that wraps the system's
+gettext library, so most of the advice in your gettext documentation
+(on GNU systems `info gettext` in a terminal) applies.
+
+General advice:
+
+ - Don't mark everything for translation, only strings which will be
+   read by humans (the porcelain interface) should be translated.
+
+   The output from Git's plumbing utilities will primarily be read by
+   programs and would break scripts under non-C locales if it was
+   translated. Plumbing strings should not be translated, since
+   they're part of Git's API.
+
+ - Adjust the strings so that they're easy to translate. Most of the
+   advice in `info '(gettext)Preparing Strings'` applies here.
+
+ - If something is unclear or ambiguous you can use a "TRANSLATORS"
+   comment to tell the translators what to make of it. These will be
+   extracted by xgettext(1) and put in the po/*.po files, e.g. from
+   git-am.sh:
+
+       # TRANSLATORS: Make sure to include [y], [n], [e], [v] and [a]
+       # in your translation. The program will only accept English
+       # input at this point.
+       gettext "Apply? [y]es/[n]o/[e]dit/[v]iew patch/[a]ccept all "
+
+   Or in C, from builtin/revert.c:
+
+       /* TRANSLATORS: %s will be "revert" or "cherry-pick" */
+       die(_("%s: Unable to write new index file"), me);
