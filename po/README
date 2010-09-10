@@ -179,3 +179,31 @@ Perl:
        printf __("The following error occured: %s\n"), $error;
 
    Run `perldoc perl/Git/I18N.pm` for more info.
+
+
+Testing marked strings
+----------------------
+
+Even if you've correctly marked porcelain strings for translation
+something in the test suite might still depend on the US English
+version of the strings, e.g. to grep some error message or other
+output.
+
+To smoke out issues like these Git can be compiled with gettext poison
+support, at the top-level:
+
+    make GETTEXT_POISON=YesPlease
+
+That'll give you a git which emits gibberish on every call to
+gettext. It's obviously not meant to be installed, but you should run
+the test suite with it:
+
+    cd t && prove -j 9 ./t[0-9]*.sh
+
+If tests break with it you should inspect them manually and see if
+what you're translating is sane, i.e. that you're not translating
+plumbing output.
+
+If not you should add a NO_GETTEXT_POISON prerequisite to the test (as
+documented in t/README). See existing test files with this
+prerequisite for examples.
