@@ -2,20 +2,8 @@
 #
 # Copyright (c) 2010 Ævar Arnfjörð Bjarmason
 #
-# This is Git's interface to gettext.sh. Use it right after
-# git-sh-setup as:
-#
-#   . git-sh-setup
-#   . git-sh-i18n
-#
-#   # For constant interface messages:
-#   gettext "A message for the user"; echo
-#
-#   # To interpolate variables:
-#   details="oh noes"
-#   eval_gettext "An error occured: \$details"; echo
-#
-# See "info '(gettext)sh'" for the full manual.
+# This is Git's interface to gettext.sh. See po/README for usage
+# instructions.
 
 # Export the TEXTDOMAIN* data that we need for Git
 TEXTDOMAIN=git

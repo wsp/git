@@ -145,3 +145,26 @@ C:
     Here _() couldn't have statically determined what the translation
     string will be, but since it was already marked for translation
     with N_() the look-up in the message catalog will succeed.
+
+Shell:
+
+ - The Git gettext shell interface is just a wrapper for
+   gettext.sh. Import it right after git-sh-setup like this:
+
+       . git-sh-setup
+       . git-sh-i18n
+
+   And then use the gettext or eval_gettext functions:
+
+       # For constant interface messages:
+       gettext "A message for the user"; echo
+
+       # To interpolate variables:
+       details="oh noes"
+       eval_gettext "An error occured: \$details"; echo
+
+   More documentation about the interface is available in the GNU info
+   page: `info '(gettext)sh'`. Looking at git-am.sh (the first shell
+   command to be translated) for examples is also useful:
+
+       git log --reverse -p --grep=gettextize git-am.sh
