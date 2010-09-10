@@ -168,3 +168,14 @@ Shell:
    command to be translated) for examples is also useful:
 
        git log --reverse -p --grep=gettextize git-am.sh
+
+Perl:
+
+ - The Git::I18N module provides a limited subset of the
+   Locale::Messages functionality, e.g.:
+
+       use Git::I18N;
+       print __("Welcome to Git!\n");
+       printf __("The following error occured: %s\n"), $error;
+
+   Run `perldoc perl/Git/I18N.pm` for more info.
