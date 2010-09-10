@@ -56,3 +56,16 @@ and then in the po/ directory do:
     msgmerge --add-location --backup=off -U XX.po git.pot
 
 Where XX.po is the file you want to update.
+
+Testing your changes
+--------------------
+
+Before you submit your changes go back to the top-level and do:
+
+    make
+
+On systems with GNU gettext (i.e. not Solaris) this will compile your
+changed PO file with `msgfmt --check`, the --check option flags many
+common errors, e.g. missing printf format strings, or translated
+messages that deviate from the originals in whether they begin/end
+with a newline or not.
