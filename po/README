@@ -109,3 +109,39 @@ General advice:
 
        /* TRANSLATORS: %s will be "revert" or "cherry-pick" */
        die(_("%s: Unable to write new index file"), me);
+
+We provide wrappers for C, Shell and Perl programs. Here's how they're
+used:
+
+C:
+
+ - Include builtin.h at the top, it'll pull in in gettext.h, which
+   defines the gettext interface. Consult with the list if you need to
+   use gettext.h directly.
+
+ - The C interface is a subset of the normal GNU gettext
+   interface. We currently export these functions:
+
+   - _()
+
+    Mark and translate a string. E.g.:
+
+        printf(_("HEAD is now at %s"), hex);
+
+   - N_()
+
+    A no-op pass-through macro for marking strings inside static
+    initializations, e.g.:
+
+        static const char *reset_type_names[] = {
+            N_("mixed"), N_("soft"), N_("hard"), N_("merge"), N_("keep"), NULL
+        };
+
+    And then, later:
+
+        die(_("%s reset is not allowed in a bare repository"),
+               _(reset_type_names[reset_type]));
+
+    Here _() couldn't have statically determined what the translation
+    string will be, but since it was already marked for translation
+    with N_() the look-up in the message catalog will succeed.
