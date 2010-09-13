@@ -219,7 +219,7 @@ cmd_add()
 	then
 		if test -d "$path"/.git -o -f "$path"/.git
 		then
-			echo "Adding existing repo at '$path' to the index"
+			echo "$(eval_gettext "Adding existing repo at '\$path' to the index")"
 		else
 			die "'$path' already exists and is not a valid git repo"
 		fi
@@ -626,7 +626,7 @@ cmd_summary() {
 				;; # removed
 			*)
 				# unexpected type
-				echo >&2 "unexpected mode $mod_dst"
+				echo >&2 "$(eval_gettext "unexpected mode \$mod_dst")"
 				continue ;;
 			esac
 		fi
