@@ -291,7 +291,7 @@ cmd_foreach()
 	do
 		if test -e "$path"/.git
 		then
-			say "Entering '$prefix$path'"
+			say "$(eval_gettext "Entering '\$prefix\$path'")"
 			name=$(module_name "$path")
 			(
 				prefix="$prefix$path/"

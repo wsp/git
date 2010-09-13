@@ -68,7 +68,7 @@ Entering 'sub3'
 $pwd/clone-foo3-sub3-$sub3sha1
 EOF
 
-test_expect_success 'test basic "submodule foreach" usage' '
+test_expect_success NO_GETTEXT_POISON 'test basic "submodule foreach" usage' '
 	git clone super clone &&
 	(
 		cd clone &&
@@ -153,7 +153,7 @@ Entering 'sub2'
 Entering 'sub3'
 EOF
 
-test_expect_success 'test messages from "foreach --recursive"' '
+test_expect_success NO_GETTEXT_POISON 'test messages from "foreach --recursive"' '
 	(
 		cd clone2 &&
 		git submodule foreach --recursive "true" > ../actual
