@@ -349,7 +349,7 @@ test_expect_success 'apply submodule diff' '
 	test_cmp empty staged
 '
 
-test_expect_success 'update --init' '
+test_expect_success NO_GETTEXT_POISON 'update --init' '
 	mv init init2 &&
 	git config -f .gitmodules submodule.example.url "$(pwd)/init2" &&
 	git config --remove-section submodule.example &&
