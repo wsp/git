@@ -121,7 +121,7 @@ git add sm1 &&
 rm -f sm1 &&
 mv sm1-bak sm1
 
-test_expect_success 'typechanged submodule(submodule->blob), --cached' "
+test_expect_success NO_GETTEXT_POISON 'typechanged submodule(submodule->blob), --cached' "
     git submodule summary --cached >actual &&
     cat >expected <<-EOF &&
 * sm1 $head4(submodule)->$head5(blob) (3):
@@ -131,7 +131,7 @@ EOF
 	test_cmp actual expected
 "
 
-test_expect_success 'typechanged submodule(submodule->blob), --files' "
+test_expect_success NO_GETTEXT_POISON 'typechanged submodule(submodule->blob), --files' "
     git submodule summary --files >actual &&
     cat >expected <<-EOF &&
 * sm1 $head5(blob)->$head4(submodule) (3):
@@ -143,7 +143,7 @@ EOF
 
 rm -rf sm1 &&
 git checkout-index sm1
-test_expect_success 'typechanged submodule(submodule->blob)' "
+test_expect_success NO_GETTEXT_POISON 'typechanged submodule(submodule->blob)' "
     git submodule summary >actual &&
     cat >expected <<-EOF &&
 * sm1 $head4(submodule)->$head5(blob):
@@ -166,7 +166,7 @@ EOF
 "
 
 commit_file
-test_expect_success 'typechanged submodule(blob->submodule)' "
+test_expect_success NO_GETTEXT_POISON 'typechanged submodule(blob->submodule)' "
     git submodule summary >actual &&
     cat >expected <<-EOF &&
 * sm1 $head5(blob)->$head6(submodule) (2):
