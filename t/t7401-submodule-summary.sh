@@ -155,7 +155,7 @@ EOF
 rm -f sm1 &&
 test_create_repo sm1 &&
 head6=$(add_file sm1 foo6 foo7)
-test_expect_success 'nonexistent commit' "
+test_expect_success NO_GETTEXT_POISON 'nonexistent commit' "
     git submodule summary >actual &&
     cat >expected <<-EOF &&
 * sm1 $head4...$head6:
