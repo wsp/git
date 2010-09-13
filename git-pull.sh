@@ -147,13 +147,14 @@ error_on_no_merge_candidates () {
 
 	if [ $# -gt 1 ]; then
 		if [ "$rebase" = true ]; then
-			printf "There is no candidate for rebasing against "
+			gettext "There is no candidate for rebasing against among the refs that you just fetched.
+Generally this means that you provided a wildcard refspec which had no
+matches on the remote end."; echo
 		else
-			printf "There are no candidates for merging "
+			gettext "There are no candidates for merging against among the refs that you just fetched.
+Generally this means that you provided a wildcard refspec which had no
+matches on the remote end."; echo
 		fi
-		echo "among the refs that you just fetched."
-		echo "Generally this means that you provided a wildcard refspec which had no"
-		echo "matches on the remote end."
 	elif [ $# -gt 0 ] && [ "$1" != "$remote" ]; then
 		echo "You asked to pull from the remote '$1', but did not specify"
 		echo "a branch. Because this is not the default configured remote"
