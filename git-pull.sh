@@ -132,15 +132,6 @@ error_on_no_merge_candidates () {
 		esac
 	done
 
-	if test true = "$rebase"
-	then
-		op_type=rebase
-		op_prep=against
-	else
-		op_type=merge
-		op_prep=with
-	fi
-
 	curr_branch=${curr_branch#refs/heads/}
 	upstream=$(git config "branch.$curr_branch.merge")
 	remote=$(git config "branch.$curr_branch.remote")
@@ -169,30 +160,59 @@ Please specify which remote branch you want to use on the command
 line and try again (e.g. 'git pull <repository> <refspec>').
 See git-pull(1) for details."; echo
 	elif [ -z "$upstream" ]; then
-		echo "You asked me to pull without telling me which branch you"
-		echo "want to $op_type $op_prep, and 'branch.${curr_branch}.merge' in"
-		echo "your configuration file does not tell me, either. Please"
-		echo "specify which branch you want to use on the command line and"
-		echo "try again (e.g. 'git pull <repository> <refspec>')."
-		echo "See git-pull(1) for details."
-		echo
-		echo "If you often $op_type $op_prep the same branch, you may want to"
-		echo "use something like the following in your configuration file:"
-		echo
-		echo "    [branch \"${curr_branch}\"]"
-		echo "    remote = <nickname>"
-		echo "    merge = <remote-ref>"
-		test rebase = "$op_type" &&
-			echo "    rebase = true"
-		echo
-		echo "    [remote \"<nickname>\"]"
-		echo "    url = <url>"
-		echo "    fetch = <refspec>"
-		echo
-		echo "See git-config(1) for details."
+		if test true = "$rebase"
+		then
+			eval_gettext "You asked me to pull without telling me which branch you
+want to rebase against, and 'branch.\${curr_branch}.merge' in
+your configuration file does not tell me, either. Please
+specify which branch you want to use on the command line and
+try again (e.g. 'git pull <repository> <refspec>').
+See git-pull(1) for details.
+
+If you often rebase against the same branch, you may want to
+use something like the following in your configuration file:
+
+    [branch \"\${curr_branch}\"]
+    remote = <nickname>
+    merge = <remote-ref>
+    rebase = true
+
+    [remote \"<nickname>\"]
+    url = <url>
+    fetch = <refspec>
+
+See git-config(1) for details."; echo
+		else
+			eval_gettext "You asked me to pull without telling me which branch you
+want to merge with, and 'branch.\${curr_branch}.merge' in
+your configuration file does not tell me, either. Please
+specify which branch you want to use on the command line and
+try again (e.g. 'git pull <repository> <refspec>').
+See git-pull(1) for details.
+
+If you often merge with the same branch, you may want to
+use something like the following in your configuration file:
+
+    [branch \"\${curr_branch}\"]
+    remote = <nickname>
+    merge = <remote-ref>
+
+    [remote \"<nickname>\"]
+    url = <url>
+    fetch = <refspec>
+
+See git-config(1) for details."; echo
+		fi
 	else
-		echo "Your configuration specifies to $op_type $op_prep the ref '${upstream#refs/heads/}'"
-		echo "from the remote, but no such ref was fetched."
+		upstream_branch="${upstream#refs/heads/}"
+		if test true = "$rebase"
+		then
+			eval_gettext "Your configuration specifies to rebase against the ref '\$upstream_branch'
+from the remote, but no such ref was fetched."; echo
+		else
+			eval_gettext "Your configuration specifies to merge with the ref '\$upstream_branch'
+from the remote, but no such ref was fetched."; echo
+		fi
 	fi
 	exit 1
 }
