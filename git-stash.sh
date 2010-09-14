@@ -13,6 +13,7 @@ USAGE="list [<options>]
 SUBDIRECTORY_OK=Yes
 OPTIONS_SPEC=
 . git-sh-setup
+. git-sh-i18n
 require_work_tree
 cd_to_toplevel
 
