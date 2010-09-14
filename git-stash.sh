@@ -401,7 +401,7 @@ apply_stash () {
 		status=$?
 		if test -n "$INDEX_OPTION"
 		then
-			echo >&2 'Index was not unstashed.'
+			echo >&2 "$(gettext "Index was not unstashed.")"
 		fi
 		exit $status
 	fi
