@@ -39,7 +39,10 @@ bisect_autostart() {
 		echo >&2 "$(gettext "You need to start by \"git bisect start\"")"
 		if test -t 0
 		then
-			echo >&2 -n 'Do you want me to do it for you [Y/n]? '
+			# TRANSLATORS: Make sure to include [Y] and [n] in your
+			# translation. The program will only accept English input
+			# at this point.
+			echo >&2 -n "$(gettext "Do you want me to do it for you [Y/n]? ")"
 			read yesno
 			case "$yesno" in
 			[Nn]*)
@@ -242,7 +245,10 @@ bisect_next_check() {
 		echo >&2 "$(gettext "Warning: bisecting only with a bad commit.")"
 		if test -t 0
 		then
-			printf >&2 'Are you sure [Y/n]? '
+			# TRANSLATORS: Make sure to include [Y] and [n] in your
+			# translation. The program will only accept English input
+			# at this point.
+			printf >&2 "$(gettext "Are you sure [Y/n]? ")"
 			read yesno
 			case "$yesno" in [Nn]*) exit 1 ;; esac
 		fi
