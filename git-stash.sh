@@ -294,7 +294,7 @@ parse_flags_and_rev()
 			:
 		;;
 		*)
-			die "Too many revisions specified: $REV"
+			die "$(eval_gettext "Too many revisions specified: \$REV")"
 		;;
 	esac
 
@@ -318,7 +318,7 @@ parse_flags_and_rev()
 		# this condition with a non-zero status code but as of 1.7.2.1 it
 		# it did not. So, we use non-empty stderr output as a proxy for the
 		# condition of interest.
-		test -z "$(git rev-parse "$REV" 2>&1 >/dev/null)" || die "$REV does not exist in the stash log"
+		test -z "$(git rev-parse "$REV" 2>&1 >/dev/null)" || die "$(eval_gettext "\$REV does not exist in the stash log")"
 	fi
 
 }
