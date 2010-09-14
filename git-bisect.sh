@@ -255,15 +255,16 @@ bisect_next_check() {
 		: bisect without good...
 		;;
 	*)
-		THEN=''
-		test -s "$GIT_DIR/BISECT_START" || {
-			echo >&2 'You need to start by "git bisect start".'
-			THEN='then '
-		}
-		echo >&2 'You '$THEN'need to give me at least one good' \
-			'and one bad revisions.'
-		echo >&2 '(You can use "git bisect bad" and' \
-			'"git bisect good" for that.)'
+
+		if test -s "$GIT_DIR/BISECT_START"
+		then
+			echo >&2 "$(gettext "You need to give me at least one good and one bad revisions.
+(You can use \"git bisect bad\" and \"git bisect good\" for that.)")"
+		else
+			echo >&2 "$(gettext "You need to start by \"git bisect start\".
+You then need to give me at least one good and one bad revisions.
+(You can use \"git bisect bad\" and \"git bisect good\" for that.)")"
+		fi
 		exit 1 ;;
 	esac
 }
