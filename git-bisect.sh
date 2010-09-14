@@ -341,7 +341,8 @@ bisect_clean_state() {
 }
 
 bisect_replay () {
-	test -r "$1" || die "cannot read $1 for replaying"
+	file="$1"
+	test -r "$file" || die "$(eval_gettext "cannot read \$file for replaying")"
 	bisect_reset
 	while read git bisect command rev
 	do
@@ -359,7 +360,7 @@ bisect_replay () {
 		*)
 			die "$(gettext "?? what are you talking about?")" ;;
 		esac
-	done <"$1"
+	done <"$file"
 	bisect_auto_next
 }
 
