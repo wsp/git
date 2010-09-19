@@ -197,7 +197,7 @@ static void wt_status_print_change_data(struct wt_status *s,
 		color_fprintf(s->fp, c, _("modified:   %s"), one);
 		break;
 	case DIFF_STATUS_RENAMED:
-		color_fprintf(s->fp, c, "renamed:    %s -> %s", one, two);
+		color_fprintf(s->fp, c, _("renamed:    %s -> %s"), one, two);
 		break;
 	case DIFF_STATUS_TYPE_CHANGED:
 		color_fprintf(s->fp, c, _("typechange: %s"), one);
