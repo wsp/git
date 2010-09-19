@@ -423,7 +423,7 @@ Unstaged changes after reset:
 M	file2
 EOF
 
-test_expect_success '--mixed refreshes the index' '
+test_expect_success NO_GETTEXT_POISON '--mixed refreshes the index' '
 	echo 123 >> file2 &&
 	git reset --mixed HEAD > output &&
 	test_cmp expect output
