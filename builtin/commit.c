@@ -877,7 +877,7 @@ static int parse_and_validate_options(int argc, const char *argv[],
 	if (amend && initial_commit)
 		die(_("You have nothing to amend."));
 	if (amend && in_merge)
-		die("You are in the middle of a merge -- cannot amend.");
+		die(_("You are in the middle of a merge -- cannot amend."));
 
 	if (use_message)
 		f++;
