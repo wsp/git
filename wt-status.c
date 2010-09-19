@@ -645,7 +645,7 @@ void wt_status_print(struct wt_status *s)
 
 	if (s->is_initial) {
 		color_fprintf_ln(s->fp, color(WT_STATUS_HEADER, s), "#");
-		color_fprintf_ln(s->fp, color(WT_STATUS_HEADER, s), "# Initial commit");
+		color_fprintf_ln(s->fp, color(WT_STATUS_HEADER, s), _("# Initial commit"));
 		color_fprintf_ln(s->fp, color(WT_STATUS_HEADER, s), "#");
 	}
 
