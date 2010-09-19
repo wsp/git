@@ -20,12 +20,12 @@ test_expect_success 'setup' '
 	git commit -m "Add submodule sub"
 '
 
-test_expect_success 'status clean' '
+test_expect_success NO_GETTEXT_POISON 'status clean' '
 	git status >output &&
 	grep "nothing to commit" output
 '
 
-test_expect_success 'commit --dry-run -a clean' '
+test_expect_success NO_GETTEXT_POISON 'commit --dry-run -a clean' '
 	test_must_fail git commit --dry-run -a >output &&
 	grep "nothing to commit" output
 '
@@ -177,12 +177,12 @@ test_expect_success 'rm submodule contents' '
 	rm -rf sub/* sub/.git
 '
 
-test_expect_success 'status clean (empty submodule dir)' '
+test_expect_success NO_GETTEXT_POISON 'status clean (empty submodule dir)' '
 	git status >output &&
 	grep "nothing to commit" output
 '
 
-test_expect_success 'status -a clean (empty submodule dir)' '
+test_expect_success NO_GETTEXT_POISON 'status -a clean (empty submodule dir)' '
 	test_must_fail git commit --dry-run -a >output &&
 	grep "nothing to commit" output
 '
