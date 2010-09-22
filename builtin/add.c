@@ -347,7 +347,7 @@ static int add_files(struct dir_struct *dir, int flags)
 		for (i = 0; i < dir->ignored_nr; i++)
 			fprintf(stderr, "%s\n", dir->ignored[i]->name);
 		fprintf(stderr, "Use -f if you really want to add them.\n");
-		die("no files added");
+		die(_("no files added"));
 	}
 
 	for (i = 0; i < dir->nr; i++)
