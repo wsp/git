@@ -818,6 +818,12 @@ AC_CHECK_HEADER([libintl.h],
 [NO_GETTEXT=YesPlease])
 AC_SUBST(NO_GETTEXT)
 #
+# Define HAVE_LIBCHARSET_H if have libcharset.h
+AC_CHECK_HEADER([libcharset.h],
+[HAVE_LIBCHARSET_H=YesPlease],
+[HAVE_LIBCHARSET_H=])
+AC_SUBST(HAVE_LIBCHARSET_H)
+#
 # Define NO_STRCASESTR if you don't have strcasestr.
 GIT_CHECK_FUNC(strcasestr,
 [NO_STRCASESTR=],

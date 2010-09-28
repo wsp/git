@@ -43,6 +43,12 @@ all::
 # on platforms where we don't expect glibc (Linux, Hurd,
 # GNU/kFreeBSD), which includes libintl.
 #
+# Define HAVE_LIBCHARSET_H if you haven't set NO_GETTEXT and you can't
+# trust the langinfo.h's nl_langinfo(CODESET) function to return the
+# current character set. GNU and Solaris have a nl_langinfo(CODESET),
+# FreeBSD can use either, but MinGW and some others need to use
+# libcharset.h's locale_charset() instead.
+#
 # Define EXPATDIR=/foo/bar if your expat header and library files are in
 # /foo/bar/include and /foo/bar/lib directories.
 #
@@ -784,6 +790,10 @@ EXTLIBS =
 ifndef NO_GETTEXT
 	# Systems that use GNU gettext and glibc are the exception
 	NEEDS_LIBINTL = YesPlease
+
+	# Since we assume a GNU gettext by default we also assume a
+	# GNU-like langinfo.h by default
+	HAVE_LIBCHARSET_H =
 endif
 
 # We choose to avoid "if .. else if .. else .. endif endif"
@@ -1170,6 +1180,9 @@ ifneq (,$(wildcard ../THIS_IS_MSYSGIT))
 	EXTLIBS += /mingw/lib/libz.a
 	NO_R_TO_GCC_LINKER = YesPlease
 	INTERNAL_QSORT = YesPlease
+ifndef NO_GETTEXT
+	HAVE_LIBCHARSET_H = YesPlease
+endif
 else
 	NO_CURL = YesPlease
 endif
@@ -1948,6 +1961,10 @@ config.s config.o: EXTRA_CPPFLAGS = -DETC_GITCONFIG='"$(ETC_GITCONFIG_SQ)"'
 attr.s attr.o: EXTRA_CPPFLAGS = -DETC_GITATTRIBUTES='"$(ETC_GITATTRIBUTES_SQ)"'
 
 http.s http.o: EXTRA_CPPFLAGS = -DGIT_HTTP_USER_AGENT='"git/$(GIT_VERSION)"'
+
+ifdef HAVE_LIBCHARSET_H
+gettext.s gettext.o: EXTRA_CPPFLAGS = -DHAVE_LIBCHARSET_H
+endif
 
 ifdef NO_EXPAT
 http-walker.s http-walker.o: EXTRA_CPPFLAGS = -DNO_EXPAT
