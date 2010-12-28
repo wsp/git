@@ -583,7 +583,6 @@ skip_unnecessary_picks () {
 }
 
 get_saved_options () {
-	test -d "$REWRITTEN" && preserve_merges=t
 	test -f "$state_dir"/rebase-root && rebase_root=t
 }
 
@@ -650,8 +649,6 @@ rearrange_squash () {
 
 case "$action" in
 continue)
-	get_saved_options
-
 	# do we have anything to commit?
 	if git diff-index --cached --quiet --ignore-submodules HEAD --
 	then
@@ -682,8 +679,6 @@ first and then run 'git rebase --continue' again."
 	do_rest
 	;;
 skip)
-	get_saved_options
-
 	git rerere clear
 
 	do_rest
