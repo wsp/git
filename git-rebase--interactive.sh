@@ -109,18 +109,6 @@ commit_message () {
 	git cat-file commit "$1" | sed "1,/^$/d"
 }
 
-run_pre_rebase_hook () {
-	if test -z "$OK_TO_SKIP_PRE_REBASE" &&
-	   test -x "$GIT_DIR/hooks/pre-rebase"
-	then
-		"$GIT_DIR/hooks/pre-rebase" ${1+"$@"} || {
-			echo >&2 "The pre-rebase hook refused to rebase."
-			exit 1
-		}
-	fi
-}
-
-
 ORIG_REFLOG_ACTION="$GIT_REFLOG_ACTION"
 
 comment_for_reflog () {
@@ -752,8 +740,6 @@ esac
 
 git var GIT_COMMITTER_IDENT >/dev/null ||
 	die "You need to set your committer info first"
-
-run_pre_rebase_hook "$upstream_arg" "$@"
 
 comment_for_reflog start
 
