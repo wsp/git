@@ -78,7 +78,7 @@ call_merge () {
 		die "$RESOLVEMSG"
 		;;
 	2)
-		echo "Strategy: $rv $strategy failed, try another" 1>&2
+		echo "Strategy: $strategy failed, try another" 1>&2
 		die "$RESOLVEMSG"
 		;;
 	*)
