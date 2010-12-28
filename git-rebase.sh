@@ -42,7 +42,7 @@ When you have resolved this problem run \"git rebase --continue\".
 If you would prefer to skip this patch, instead run \"git rebase --skip\".
 To restore the original branch and stop rebasing run \"git rebase --abort\".
 "
-unset newbase
+unset onto
 strategy=recursive
 strategy_opts=
 do_merge=
@@ -245,7 +245,7 @@ do
 		;;
 	--onto)
 		test 2 -le "$#" || usage
-		newbase="$2"
+		onto="$2"
 		shift
 		;;
 	-M|-m|--m|--me|--mer|--merg|--merge)
@@ -425,7 +425,7 @@ then
 	unset root_flag
 	upstream_arg="$upstream_name"
 else
-	test -z "$newbase" && die "--root must be used with --onto"
+	test -z "$onto" && die "--root must be used with --onto"
 	unset upstream_name
 	unset upstream
 	root_flag="--root"
@@ -433,7 +433,7 @@ else
 fi
 
 # Make sure the branch to rebase onto is valid.
-onto_name=${newbase-"$upstream_name"}
+onto_name=${onto-"$upstream_name"}
 case "$onto_name" in
 *...*)
 	if	left=${onto_name%...*} right=${onto_name#*...} &&
