@@ -78,6 +78,9 @@ read_basic_state () {
 	fi &&
 	GIT_QUIET=$(cat "$state_dir"/quiet) &&
 	test -f "$state_dir"/verbose && verbose=t
+	test -f "$state_dir"/strategy && strategy="$(cat "$state_dir"/strategy)"
+	test -f "$state_dir"/strategy_opts &&
+		strategy_opts="$(cat "$state_dir"/strategy_opts)"
 }
 
 write_basic_state () {
@@ -91,6 +94,9 @@ write_basic_state () {
 	fi &&
 	echo "$GIT_QUIET" > "$state_dir"/quiet &&
 	test t = "$verbose" && : > "$state_dir"/verbose
+	test -n "$strategy" && echo "$strategy" > "$state_dir"/strategy
+	test -n "$strategy_opts" && echo "$strategy_opts" > \
+		"$state_dir"/strategy_opts
 }
 
 output () {
