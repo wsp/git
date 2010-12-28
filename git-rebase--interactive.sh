@@ -81,9 +81,7 @@ AMEND="$DOTEST"/amend
 REWRITTEN_LIST="$DOTEST"/rewritten-list
 REWRITTEN_PENDING="$DOTEST"/rewritten-pending
 
-GIT_CHERRY_PICK_HELP="\
-hint: after resolving the conflicts, mark the corrected paths
-hint: with 'git add <paths>' and run 'git rebase --continue'"
+GIT_CHERRY_PICK_HELP="$RESOLVEMSG"
 export GIT_CHERRY_PICK_HELP
 
 warn () {
