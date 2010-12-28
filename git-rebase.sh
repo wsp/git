@@ -74,6 +74,20 @@ read_basic_state () {
 	GIT_QUIET=$(cat "$state_dir"/quiet)
 }
 
+output () {
+	case "$verbose" in
+	'')
+		output=$("$@" 2>&1 )
+		status=$?
+		test $status != 0 && printf "%s\n" "$output"
+		return $status
+		;;
+	*)
+		"$@"
+		;;
+	esac
+}
+
 move_to_original_branch () {
 	case "$head_name" in
 	refs/*)
@@ -95,7 +109,7 @@ run_specific_rebase () {
 	force_rebase action preserve_merges upstream switch_to head_name \
 	state_dir orig_head onto_name GIT_QUIET revisions RESOLVEMSG \
 	allow_rerere_autoupdate git_am_opt
-	export -f move_to_original_branch
+	export -f move_to_original_branch output
 	exec git-rebase--$type
 }
 
@@ -268,7 +282,7 @@ continue)
 	run_specific_rebase
 	;;
 skip)
-	git reset --hard HEAD || exit $?
+	output git reset --hard HEAD || exit $?
 	read_basic_state
 	run_specific_rebase
 	;;
@@ -281,7 +295,7 @@ abort)
 		die "Could not move back to $head_name"
 		;;
 	esac
-	git reset --hard $orig_head
+	output git reset --hard $orig_head
 	rm -r "$state_dir"
 	exit
 	;;
