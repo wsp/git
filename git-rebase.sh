@@ -79,6 +79,18 @@ read_basic_state () {
 	GIT_QUIET=$(cat "$state_dir"/quiet)
 }
 
+write_basic_state () {
+	echo "$head_name" > "$state_dir"/head-name &&
+	echo "$onto" > "$state_dir"/onto &&
+	if test "$type" = interactive
+	then
+		echo "$orig_head" > "$state_dir"/head
+	else
+		echo "$orig_head" > "$state_dir"/orig-head
+	fi &&
+	echo "$GIT_QUIET" > "$state_dir"/quiet
+}
+
 output () {
 	case "$verbose" in
 	'')
@@ -113,8 +125,8 @@ run_specific_rebase () {
 	export onto autosquash strategy strategy_opts verbose rebase_root \
 	force_rebase action preserve_merges upstream switch_to head_name \
 	state_dir orig_head onto_name GIT_QUIET revisions RESOLVEMSG \
-	allow_rerere_autoupdate git_am_opt
-	export -f move_to_original_branch output
+	allow_rerere_autoupdate git_am_opt type
+	export -f move_to_original_branch output write_basic_state
 	exec git-rebase--$type
 }
 
