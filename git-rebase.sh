@@ -185,7 +185,8 @@ run_interactive_rebase () {
 		export GIT_EDITOR
 	fi
 	export onto autosquash strategy strategy_opts verbose rebase_root \
-	force_rebase action preserve_merges OK_TO_SKIP_PRE_REBASE
+	force_rebase action preserve_merges OK_TO_SKIP_PRE_REBASE upstream \
+	upstream_arg switch_to head_name
 	exec git-rebase--interactive "$@"
 }
 
@@ -433,8 +434,6 @@ else
 	state_dir="$apply_dir"
 fi
 
-test "$type" = interactive && run_interactive_rebase "$@"
-
 if test -z "$rebase_root"
 then
 	# The upstream head must be given.  Make sure it is valid.
@@ -445,7 +444,7 @@ then
 	unset root_flag
 	upstream_arg="$upstream_name"
 else
-	test -z "$onto" && die "--root must be used with --onto"
+	test -z "$onto" && die "You must specify --onto when using --root"
 	unset upstream_name
 	unset upstream
 	root_flag="--root"
@@ -472,7 +471,8 @@ case "$onto_name" in
 	fi
 	;;
 *)
-	onto=$(git rev-parse --verify "${onto_name}^0") || exit
+	onto=$(git rev-parse --verify "${onto_name}^0") ||
+	die "Does not point to a valid commit: $1"
 	;;
 esac
 
@@ -512,6 +512,8 @@ case "$#" in
 	;;
 esac
 orig_head=$branch
+
+test "$type" = interactive && run_interactive_rebase "$@"
 
 require_clean_work_tree "rebase" "Please commit or stash them."
 
