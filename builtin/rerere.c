@@ -8,7 +8,7 @@
 #include "xdiff-interface.h"
 
 static const char * const rerere_usage[] = {
-	"git rerere [clear | status | diff | gc]",
+	"git rerere [clear | status | remaining | diff | gc]",
 	NULL,
 };
 
@@ -147,6 +147,8 @@ int cmd_rerere(int argc, const char **argv, const char *prefix)
 	if (!strcmp(argv[0], "clear")) {
 		for (i = 0; i < merge_rr.nr; i++) {
 			const char *name = (const char *)merge_rr.items[i].util;
+			if (!name)
+				continue;
 			if (!has_rerere_resolution(name))
 				unlink_rr_item(name);
 		}
@@ -154,12 +156,20 @@ int cmd_rerere(int argc, const char **argv, const char *prefix)
 	} else if (!strcmp(argv[0], "gc"))
 		garbage_collect(&merge_rr);
 	else if (!strcmp(argv[0], "status"))
+		for (i = 0; i < merge_rr.nr; i++) {
+			if (!merge_rr.items[i].util)
+				continue;
+			printf("%s\n", merge_rr.items[i].string);
+		}
+	else if (!strcmp(argv[0], "remaining"))
 		for (i = 0; i < merge_rr.nr; i++)
 			printf("%s\n", merge_rr.items[i].string);
 	else if (!strcmp(argv[0], "diff"))
 		for (i = 0; i < merge_rr.nr; i++) {
 			const char *path = merge_rr.items[i].string;
 			const char *name = (const char *)merge_rr.items[i].util;
+			if (!name)
+				continue;
 			diff_two(rerere_path(name, "preimage"), path, path, path);
 		}
 	else
