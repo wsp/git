@@ -415,11 +415,18 @@ static void record_if_better(struct diff_score m[], struct diff_score *o)
 		m[worst] = *o;
 }
 
+/*
+ * Returns:
+ * 0 if we are under the limit;
+ * 1 if we need to disable inexact rename detection;
+ * 2 if we would be under the limit if we were given -C instead of -C -C.
+ */
 static int too_many_rename_candidates(int num_create,
 				      struct diff_options *options)
 {
 	int rename_limit = options->rename_limit;
 	int num_src = rename_src_nr;
+	int i;
 
 	/*
 	 * This basically does a test for the rename matrix not
@@ -436,6 +443,19 @@ static int too_many_rename_candidates(int num_create,
 	    (num_create * num_src <= rename_limit * rename_limit))
 		return 0;
 
+	/* Are we running under -C -C? */
+	if (!DIFF_OPT_TST(options, FIND_COPIES_HARDER))
+		return 1;
+
+	/* Would we bust the limit if we were running under -C? */
+	for (num_src = i = 0; i < rename_src_nr; i++) {
+		if (diff_unmodified_pair(rename_src[i].p))
+			continue;
+		num_src++;
+	}
+	if ((num_create <= rename_limit || num_src <= rename_limit) &&
+	    (num_create * num_src <= rename_limit * rename_limit))
+		return 2;
 	return 1;
 }
 
@@ -446,7 +466,7 @@ void diffcore_rename(struct diff_options *options)
 	struct diff_queue_struct *q = &diff_queued_diff;
 	struct diff_queue_struct outq;
 	struct diff_score *mx;
-	int i, j, rename_count;
+	int i, j, rename_count, skip_unmodified = 0;
 	int num_create, num_src, dst_cnt;
 
 	if (!minimum_score)
@@ -508,10 +528,18 @@ void diffcore_rename(struct diff_options *options)
 	if (!num_create)
 		goto cleanup;
 
-	if (too_many_rename_candidates(num_create, options)) {
+	switch (too_many_rename_candidates(num_create, options)) {
+	case 1:
 		if (options->warn_on_too_large_rename)
 			warning("too many files (created: %d deleted: %d), skipping inexact rename detection", num_create, num_src);
 		goto cleanup;
+	case 2:
+		if (options->warn_on_too_large_rename)
+			warning("too many files, falling back to -C");
+		skip_unmodified = 1;
+		break;
+	default:
+		break;
 	}
 
 	mx = xcalloc(num_create * NUM_CANDIDATE_PER_DST, sizeof(*mx));
@@ -529,6 +557,11 @@ void diffcore_rename(struct diff_options *options)
 		for (j = 0; j < rename_src_nr; j++) {
 			struct diff_filespec *one = rename_src[j].p->one;
 			struct diff_score this_src;
+
+			if (skip_unmodified &&
+			    diff_unmodified_pair(rename_src[j].p))
+				continue;
+
 			this_src.score = estimate_similarity(one, two,
 							     minimum_score);
 			this_src.name_score = basename_same(one, two);
