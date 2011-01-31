@@ -37,6 +37,7 @@ ORIGINAL_TERM=$TERM
 # For repeatability, reset the environment to known value.
 LANG=C
 LC_ALL=C
+LANGUAGE=C
 PAGER=cat
 TZ=UTC
 TERM=dumb
@@ -1078,6 +1079,15 @@ esac
 
 test -z "$NO_PERL" && test_set_prereq PERL
 test -z "$NO_PYTHON" && test_set_prereq PYTHON
+test -z "$NO_GETTEXT" && test_set_prereq GETTEXT
+if test -z "$GETTEXT_POISON"
+then
+	test_set_prereq NO_GETTEXT_POISON
+else
+	test_set_prereq GETTEXT_POISON
+	GIT_INTERNAL_GETTEXT_GETTEXT_POISON=YesPlease
+	export GIT_INTERNAL_GETTEXT_GETTEXT_POISON
+fi
 
 # test whether the filesystem supports symbolic links
 ln -s x y 2>/dev/null && test -h y 2>/dev/null && test_set_prereq SYMLINKS

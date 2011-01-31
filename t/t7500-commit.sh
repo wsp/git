@@ -59,7 +59,7 @@ test_expect_success 'adding comments to a template should not commit' '
 	)
 '
 
-test_expect_success 'adding real content to a template should commit' '
+test_expect_success NO_GETTEXT_POISON 'adding real content to a template should commit' '
 	(
 		test_set_editor "$TEST_DIRECTORY"/t7500/add-content &&
 		git commit --template "$TEMPLATE"
@@ -67,7 +67,7 @@ test_expect_success 'adding real content to a template should commit' '
 	commit_msg_is "template linecommit message"
 '
 
-test_expect_success '-t option should be short for --template' '
+test_expect_success NO_GETTEXT_POISON '-t option should be short for --template' '
 	echo "short template" > "$TEMPLATE" &&
 	echo "new content" >> foo &&
 	git add foo &&
@@ -78,7 +78,7 @@ test_expect_success '-t option should be short for --template' '
 	commit_msg_is "short templatecommit message"
 '
 
-test_expect_success 'config-specified template should commit' '
+test_expect_success NO_GETTEXT_POISON 'config-specified template should commit' '
 	echo "new template" > "$TEMPLATE" &&
 	git config commit.template "$TEMPLATE" &&
 	echo "more content" >> foo &&

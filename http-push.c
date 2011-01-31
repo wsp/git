@@ -10,6 +10,7 @@
 #include "remote.h"
 #include "list-objects.h"
 #include "sigchain.h"
+#include "gettext.h"
 
 #include <expat.h>
 
@@ -1801,6 +1802,8 @@ int main(int argc, char **argv)
 	int new_refs;
 	struct ref *ref, *local_refs;
 	struct remote *remote;
+
+	git_setup_gettext();
 
 	git_extract_argv0_path(argv[0]);
 

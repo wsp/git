@@ -8,7 +8,7 @@
  * Clone a repository into a different directory that does not yet exist.
  */
 
-#include "cache.h"
+#include "builtin.h"
 #include "parse-options.h"
 #include "fetch-pack.h"
 #include "refs.h"
@@ -16,7 +16,6 @@
 #include "tree-walk.h"
 #include "unpack-trees.h"
 #include "transport.h"
-#include "strbuf.h"
 #include "dir.h"
 #include "pack-refs.h"
 #include "sigchain.h"
@@ -208,7 +207,7 @@ static void setup_reference(const char *repo)
 	if (is_directory(mkpath("%s/.git/objects", ref_git)))
 		ref_git = mkpath("%s/.git", ref_git);
 	else if (!is_directory(mkpath("%s/objects", ref_git)))
-		die("reference repository '%s' is not a local directory.",
+		die(_("reference repository '%s' is not a local directory."),
 		    option_reference);
 
 	ref_git_copy = xstrdup(ref_git);
@@ -235,15 +234,15 @@ static void copy_or_link_directory(struct strbuf *src, struct strbuf *dest)
 
 	dir = opendir(src->buf);
 	if (!dir)
-		die_errno("failed to open '%s'", src->buf);
+		die_errno(_("failed to open '%s'"), src->buf);
 
 	if (mkdir(dest->buf, 0777)) {
 		if (errno != EEXIST)
-			die_errno("failed to create directory '%s'", dest->buf);
+			die_errno(_("failed to create directory '%s'"), dest->buf);
 		else if (stat(dest->buf, &buf))
-			die_errno("failed to stat '%s'", dest->buf);
+			die_errno(_("failed to stat '%s'"), dest->buf);
 		else if (!S_ISDIR(buf.st_mode))
-			die("%s exists and is not a directory", dest->buf);
+			die(_("%s exists and is not a directory"), dest->buf);
 	}
 
 	strbuf_addch(src, '/');
@@ -257,7 +256,7 @@ static void copy_or_link_directory(struct strbuf *src, struct strbuf *dest)
 		strbuf_setlen(dest, dest_len);
 		strbuf_addstr(dest, de->d_name);
 		if (stat(src->buf, &buf)) {
-			warning ("failed to stat %s\n", src->buf);
+			warning (_("failed to stat %s\n"), src->buf);
 			continue;
 		}
 		if (S_ISDIR(buf.st_mode)) {
@@ -267,16 +266,16 @@ static void copy_or_link_directory(struct strbuf *src, struct strbuf *dest)
 		}
 
 		if (unlink(dest->buf) && errno != ENOENT)
-			die_errno("failed to unlink '%s'", dest->buf);
+			die_errno(_("failed to unlink '%s'"), dest->buf);
 		if (!option_no_hardlinks) {
 			if (!link(src->buf, dest->buf))
 				continue;
 			if (option_local)
-				die_errno("failed to create link '%s'", dest->buf);
+				die_errno(_("failed to create link '%s'"), dest->buf);
 			option_no_hardlinks = 1;
 		}
 		if (copy_file_with_time(dest->buf, src->buf, 0666))
-			die_errno("failed to copy file to '%s'", dest->buf);
+			die_errno(_("failed to copy file to '%s'"), dest->buf);
 	}
 	closedir(dir);
 }
@@ -305,7 +304,7 @@ static const struct ref *clone_local(const char *src_repo,
 	ret = transport_get_remote_refs(transport);
 	transport_disconnect(transport);
 	if (0 <= option_verbosity)
-		printf("done.\n");
+		printf(_("done.\n"));
 	return ret;
 }
 
@@ -387,11 +386,11 @@ int cmd_clone(int argc, const char **argv, const char *prefix)
 			     builtin_clone_usage, 0);
 
 	if (argc > 2)
-		usage_msg_opt("Too many arguments.",
+		usage_msg_opt(_("Too many arguments."),
 			builtin_clone_usage, builtin_clone_options);
 
 	if (argc == 0)
-		usage_msg_opt("You must specify a repository to clone.",
+		usage_msg_opt(_("You must specify a repository to clone."),
 			builtin_clone_usage, builtin_clone_options);
 
 	if (option_mirror)
@@ -399,7 +398,7 @@ int cmd_clone(int argc, const char **argv, const char *prefix)
 
 	if (option_bare) {
 		if (option_origin)
-			die("--bare and --origin %s options are incompatible.",
+			die(_("--bare and --origin %s options are incompatible."),
 			    option_origin);
 		option_no_checkout = 1;
 	}
@@ -428,8 +427,8 @@ int cmd_clone(int argc, const char **argv, const char *prefix)
 
 	dest_exists = !stat(dir, &buf);
 	if (dest_exists && !is_empty_dir(dir))
-		die("destination path '%s' already exists and is not "
-			"an empty directory.", dir);
+		die(_("destination path '%s' already exists and is not "
+			"an empty directory."), dir);
 
 	strbuf_addf(&reflog_msg, "clone: from %s", repo);
 
@@ -438,7 +437,7 @@ int cmd_clone(int argc, const char **argv, const char *prefix)
 	else {
 		work_tree = getenv("GIT_WORK_TREE");
 		if (work_tree && !stat(work_tree, &buf))
-			die("working tree '%s' already exists.", work_tree);
+			die(_("working tree '%s' already exists."), work_tree);
 	}
 
 	if (option_bare || work_tree)
@@ -451,10 +450,10 @@ int cmd_clone(int argc, const char **argv, const char *prefix)
 	if (!option_bare) {
 		junk_work_tree = work_tree;
 		if (safe_create_leading_directories_const(work_tree) < 0)
-			die_errno("could not create leading directories of '%s'",
+			die_errno(_("could not create leading directories of '%s'"),
 				  work_tree);
 		if (!dest_exists && mkdir(work_tree, 0755))
-			die_errno("could not create work tree dir '%s'.",
+			die_errno(_("could not create work tree dir '%s'."),
 				  work_tree);
 		set_git_work_tree(work_tree);
 	}
@@ -465,12 +464,15 @@ int cmd_clone(int argc, const char **argv, const char *prefix)
 	setenv(CONFIG_ENVIRONMENT, mkpath("%s/config", git_dir), 1);
 
 	if (safe_create_leading_directories_const(git_dir) < 0)
-		die("could not create leading directories of '%s'", git_dir);
+		die(_("could not create leading directories of '%s'"), git_dir);
 	set_git_dir(make_absolute_path(git_dir));
 
-	if (0 <= option_verbosity)
-		printf("Cloning into %s%s...\n",
-		       option_bare ? "bare repository " : "", dir);
+	if (0 <= option_verbosity) {
+		if (option_bare)
+			printf(_("Cloning into bare repository %s\n"), dir);
+		else
+			printf(_("Cloning into %s\n"), dir);
+	}
 	init_db(option_template, INIT_DB_QUIET);
 
 	/*
@@ -527,7 +529,7 @@ int cmd_clone(int argc, const char **argv, const char *prefix)
 		transport = transport_get(remote, remote->url[0]);
 
 		if (!transport->get_refs_list || !transport->fetch)
-			die("Don't know how to clone %s", transport->url);
+			die(_("Don't know how to clone %s"), transport->url);
 
 		transport_set_option(transport, TRANS_OPT_KEEP, "yes");
 
@@ -566,8 +568,8 @@ int cmd_clone(int argc, const char **argv, const char *prefix)
 			strbuf_release(&head);
 
 			if (!our_head_points_at) {
-				warning("Remote branch %s not found in "
-					"upstream %s, using HEAD instead",
+				warning(_("Remote branch %s not found in "
+					"upstream %s, using HEAD instead"),
 					option_branch, option_origin);
 				our_head_points_at = remote_head_points_at;
 			}
@@ -576,7 +578,7 @@ int cmd_clone(int argc, const char **argv, const char *prefix)
 			our_head_points_at = remote_head_points_at;
 	}
 	else {
-		warning("You appear to have cloned an empty repository.");
+		warning(_("You appear to have cloned an empty repository."));
 		our_head_points_at = NULL;
 		remote_head_points_at = NULL;
 		remote_head = NULL;
@@ -618,8 +620,8 @@ int cmd_clone(int argc, const char **argv, const char *prefix)
 	} else {
 		/* Nothing to checkout out */
 		if (!option_no_checkout)
-			warning("remote HEAD refers to nonexistent ref, "
-				"unable to checkout.\n");
+			warning(_("remote HEAD refers to nonexistent ref, "
+				"unable to checkout.\n"));
 		option_no_checkout = 1;
 	}
 
@@ -655,7 +657,7 @@ int cmd_clone(int argc, const char **argv, const char *prefix)
 
 		if (write_cache(fd, active_cache, active_nr) ||
 		    commit_locked_index(lock_file))
-			die("unable to write new index file");
+			die(_("unable to write new index file"));
 
 		err |= run_hook(NULL, "post-checkout", sha1_to_hex(null_sha1),
 				sha1_to_hex(our_head_points_at->old_sha1), "1",

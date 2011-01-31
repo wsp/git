@@ -4,6 +4,7 @@
 #include "run-command.h"
 #include "strbuf.h"
 #include "string-list.h"
+#include "gettext.h"
 
 #ifndef HOST_NAME_MAX
 #define HOST_NAME_MAX 256
@@ -1052,6 +1053,8 @@ int main(int argc, char **argv)
 	int detach = 0;
 	struct credentials *cred = NULL;
 	int i;
+
+	git_setup_gettext();
 
 	git_extract_argv0_path(argv[0]);
 

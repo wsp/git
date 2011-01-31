@@ -4,6 +4,7 @@
 #include "help.h"
 #include "quote.h"
 #include "run-command.h"
+#include "gettext.h"
 
 const char git_usage_string[] =
 	"git [--version] [--exec-path[=<path>]] [--html-path]\n"
@@ -517,6 +518,8 @@ int main(int argc, const char **argv)
 	cmd = git_extract_argv0_path(argv[0]);
 	if (!cmd)
 		cmd = "git-help";
+
+	git_setup_gettext();
 
 	/*
 	 * "git-xxxx" is the same as "git xxxx", but we obviously:
