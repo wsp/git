@@ -47,7 +47,7 @@ static int show_reference(const char *refname, const unsigned char *sha1,
 			commit = lookup_commit_reference_gently(sha1, 1);
 			if (!commit)
 				return 0;
-			if (!is_descendant_of(commit, filter->with_commit))
+			if (!contains(commit, filter->with_commit))
 				return 0;
 		}
 
