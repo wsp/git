@@ -628,6 +628,11 @@ static int git_default_core_config(const char *var, const char *value)
 	if (!strcmp(var, "core.excludesfile"))
 		return git_config_pathname(&excludes_file, var, value);
 
+	if (!strcmp(var, "core.ignoredareprecious")) {
+		ignored_are_precious = git_config_bool(var, value);
+		return 0;
+	}
+
 	if (!strcmp(var, "core.whitespace")) {
 		if (!value)
 			return config_error_nonbool(var);
