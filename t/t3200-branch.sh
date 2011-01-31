@@ -488,6 +488,15 @@ test_expect_success 'autosetuprebase always on an untracked remote branch' '
 	test "z$(git config branch.myr20.rebase)" = z
 '
 
+test_expect_success 'autosetuprebase always on detached HEAD' '
+	git config branch.autosetupmerge always &&
+	test_when_finished git checkout master &&
+	git checkout HEAD^0 &&
+	git branch my11 &&
+	test -z "$(git config branch.my11.remote)" &&
+	test -z "$(git config branch.my11.merge)"
+'
+
 test_expect_success 'detect misconfigured autosetuprebase (bad value)' '
 	git config branch.autosetuprebase garbage &&
 	test_must_fail git branch
