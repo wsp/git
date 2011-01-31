@@ -350,19 +350,55 @@ static int find_conflict(struct string_list *conflict)
 	int i;
 	if (read_cache() < 0)
 		return error("Could not read index");
-	for (i = 0; i+1 < active_nr; i++) {
-		struct cache_entry *e2 = active_cache[i];
-		struct cache_entry *e3 = active_cache[i+1];
-		if (ce_stage(e2) == 2 &&
-		    ce_stage(e3) == 3 &&
-		    ce_same_name(e2, e3) &&
-		    S_ISREG(e2->ce_mode) &&
-		    S_ISREG(e3->ce_mode)) {
-			string_list_insert(conflict, (const char *)e2->name);
-			i++; /* skip over both #2 and #3 */
+
+	/*
+	 * Collect paths with conflict, mark them with NULL (punted) or
+	 * !NULL (eligible) in their ->util field.
+	 */
+	for (i = 0; i < active_nr; i++) {
+		struct cache_entry *e = active_cache[i];
+		struct string_list_item *it;
+
+		if (!ce_stage(e))
+			continue;
+		it = string_list_insert(conflict, (const char *)e->name);
+		it->util = NULL;
+		if (ce_stage(e) == 1) {
+			if (active_nr <= ++i)
+				break;
 		}
+
+		/* Only handle regular files with both stages #2 and #3 */
+		if (i + 1 < active_nr) {
+			struct cache_entry *e2 = active_cache[i];
+			struct cache_entry *e3 = active_cache[i + 1];
+			if (ce_stage(e2) == 2 &&
+			    ce_stage(e3) == 3 &&
+			    ce_same_name(e, e3) &&
+			    S_ISREG(e2->ce_mode) &&
+			    S_ISREG(e3->ce_mode))
+				it->util = (void *) 1;
+		}
+
+		/* Skip the entries with the same name */
+		while (i < active_nr && ce_same_name(e, active_cache[i]))
+			i++;
+		i--; /* compensate for the outer loop */
 	}
 	return 0;
+}
+
+static void add_punted(struct string_list *merge_rr)
+{
+	int i;
+	struct string_list conflict = STRING_LIST_INIT_DUP;
+
+	find_conflict(&conflict);
+	for (i = 0; i < conflict.nr; i++) {
+		if (conflict.items[i].util)
+			continue;
+		string_list_insert(merge_rr, conflict.items[i].string);
+	}
 }
 
 static int merge(const char *name, const char *path)
@@ -451,6 +487,8 @@ static int do_plain_rerere(struct string_list *rr, int fd)
 
 	for (i = 0; i < conflict.nr; i++) {
 		const char *path = conflict.items[i].string;
+		if (!conflict.items[i].util)
+			continue; /* punted */
 		if (!string_list_has_string(rr, path)) {
 			unsigned char sha1[20];
 			char *hex;
@@ -478,6 +516,8 @@ static int do_plain_rerere(struct string_list *rr, int fd)
 		const char *path = rr->items[i].string;
 		const char *name = (const char *)rr->items[i].util;
 
+		if (!name)
+			continue;
 		if (has_rerere_resolution(name)) {
 			if (!merge(name, path)) {
 				if (rerere_autoupdate)
@@ -552,6 +592,7 @@ int setup_rerere(struct string_list *merge_rr, int flags)
 	fd = hold_lock_file_for_update(&write_lock, merge_rr_path,
 				       LOCK_DIE_ON_ERROR);
 	read_rr(merge_rr);
+	add_punted(merge_rr);
 	return fd;
 }
 
@@ -607,6 +648,8 @@ int rerere_forget(const char **pathspec)
 	find_conflict(&conflict);
 	for (i = 0; i < conflict.nr; i++) {
 		struct string_list_item *it = &conflict.items[i];
+		if (!conflict.items[i].util)
+			continue; /* punted */
 		if (!match_pathspec(pathspec, it->string, strlen(it->string),
 				    0, NULL))
 			continue;
