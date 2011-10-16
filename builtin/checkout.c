@@ -478,9 +478,6 @@ static int merge_working_tree(struct checkout_opts *opts,
 	    commit_locked_index(lock_file))
 		die(_("unable to write new index file"));
 
-	if (!opts->force && !opts->quiet)
-		show_local_changes(&new->commit->object, &opts->diff_options);
-
 	return 0;
 }
 
@@ -724,6 +721,10 @@ static int switch_branches(struct checkout_opts *opts, struct branch_info *new)
 
 	ret = post_checkout_hook(old.commit, new->commit, 1);
 	free((char *)old.path);
+
+	if (!opts->force && !opts->quiet)
+		show_local_changes(&new->commit->object, &opts->diff_options);
+
 	return ret || opts->writeout_error;
 }
 
