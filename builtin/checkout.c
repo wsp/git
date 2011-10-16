@@ -28,7 +28,7 @@ static const char * const checkout_usage[] = {
 };
 
 struct checkout_opts {
-	int quiet;
+	int verbosity;
 	int merge;
 	int force;
 	int force_detach;
@@ -291,10 +291,10 @@ static int checkout_paths(struct tree *source_tree, const char **pathspec,
 	return errs;
 }
 
-static void show_local_changes(struct object *head, struct diff_options *opts)
+static void show_local_changes_brief(struct object *head, struct diff_options *opts)
 {
 	struct rev_info rev;
-	/* I think we want full paths, even if we're in a subdirectory. */
+
 	init_revisions(&rev, NULL);
 	rev.diffopt.flags = opts->flags;
 	rev.diffopt.output_format |= DIFF_FORMAT_NAME_STATUS;
@@ -302,6 +302,26 @@ static void show_local_changes(struct object *head, struct diff_options *opts)
 		die(_("diff_setup_done failed"));
 	add_pending_object(&rev, head, NULL);
 	run_diff_index(&rev, 0);
+}
+
+static void show_local_changes_status(void)
+{
+	const char *argv[] = { "status", NULL };
+
+	run_command_v_opt(argv, RUN_GIT_CMD);
+}
+
+static void show_local_changes(struct checkout_opts *opts,
+			       struct object *head,
+			       struct diff_options *diffopts)
+{
+	if (opts->force || opts->verbosity < 0)
+		return;
+
+	if (0 < opts->verbosity)
+		show_local_changes_status();
+	else
+		show_local_changes_brief(head, diffopts);
 }
 
 static void describe_detached_head(const char *msg, struct commit *commit)
@@ -326,7 +346,7 @@ static int reset_tree(struct tree *tree, struct checkout_opts *o, int worktree)
 	opts.reset = 1;
 	opts.merge = 1;
 	opts.fn = oneway_merge;
-	opts.verbose_update = !o->quiet;
+	opts.verbose_update = (0 <= o->verbosity);
 	opts.src_index = &the_index;
 	opts.dst_index = &the_index;
 	parse_tree(tree);
@@ -403,7 +423,7 @@ static int merge_working_tree(struct checkout_opts *opts,
 		topts.update = 1;
 		topts.merge = 1;
 		topts.gently = opts->merge && old->commit;
-		topts.verbose_update = !opts->quiet;
+		topts.verbose_update = (0 <= opts->verbosity);
 		topts.fn = twoway_merge;
 		topts.dir = xcalloc(1, sizeof(*topts.dir));
 		topts.dir->flags |= DIR_SHOW_IGNORED;
@@ -549,14 +569,14 @@ static void update_refs_for_switch(struct checkout_opts *opts,
 	} else if (opts->force_detach || !new->path) {	/* No longer on any branch. */
 		update_ref(msg.buf, "HEAD", new->commit->object.sha1, NULL,
 			   REF_NODEREF, DIE_ON_ERR);
-		if (!opts->quiet) {
+		if (0 <= opts->verbosity) {
 			if (old->path && advice_detached_head)
 				detach_advice(old->path, new->name);
 			describe_detached_head(_("HEAD is now at"), new->commit);
 		}
 	} else if (new->path) {	/* Switch branches. */
 		create_symref("HEAD", new->path, msg.buf);
-		if (!opts->quiet) {
+		if (0 <= opts->verbosity) {
 			if (old->path && !strcmp(new->path, old->path)) {
 				fprintf(stderr, _("Already on '%s'\n"),
 					new->name);
@@ -581,7 +601,7 @@ static void update_refs_for_switch(struct checkout_opts *opts,
 	}
 	remove_branch_state();
 	strbuf_release(&msg);
-	if (!opts->quiet &&
+	if (0 <= opts->verbosity &&
 	    (new->path || (!opts->force_detach && !strcmp(new->name, "HEAD"))))
 		report_tracking(new);
 }
@@ -714,7 +734,7 @@ static int switch_branches(struct checkout_opts *opts, struct branch_info *new)
 	if (ret)
 		return ret;
 
-	if (!opts->quiet && !old.path && old.commit && new->commit != old.commit)
+	if (0 <= opts->verbosity && !old.path && old.commit && new->commit != old.commit)
 		orphaned_commit_warning(old.commit);
 
 	update_refs_for_switch(opts, &old, new);
@@ -722,8 +742,7 @@ static int switch_branches(struct checkout_opts *opts, struct branch_info *new)
 	ret = post_checkout_hook(old.commit, new->commit, 1);
 	free((char *)old.path);
 
-	if (!opts->force && !opts->quiet)
-		show_local_changes(&new->commit->object, &opts->diff_options);
+	show_local_changes(opts, &new->commit->object, &opts->diff_options);
 
 	return ret || opts->writeout_error;
 }
@@ -907,7 +926,7 @@ int cmd_checkout(int argc, const char **argv, const char *prefix)
 	int patch_mode = 0;
 	int dwim_new_local_branch = 1;
 	struct option options[] = {
-		OPT__QUIET(&opts.quiet, "suppress progress reporting"),
+		OPT__VERBOSITY(&opts.verbosity),
 		OPT_STRING('b', NULL, &opts.new_branch, "branch",
 			   "create and checkout a new branch"),
 		OPT_STRING('B', NULL, &opts.new_branch_force, "branch",
