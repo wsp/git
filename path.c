@@ -288,6 +288,7 @@ char *enter_repo(char *path, int strict)
 	static char used_path[PATH_MAX];
 	static char validated_path[PATH_MAX];
 
+	errno = 0;
 	if (!path)
 		return NULL;
 
@@ -301,12 +302,15 @@ char *enter_repo(char *path, int strict)
 			path[len-1] = 0;
 			len--;
 		}
-		if (PATH_MAX <= len)
+		if (PATH_MAX <= len) {
+			errno = ENAMETOOLONG;
 			return NULL;
+		}
 		if (path[0] == '~') {
 			char *newpath = expand_user_path(path);
 			if (!newpath || (PATH_MAX - 10 < strlen(newpath))) {
 				free(newpath);
+				errno = 0;
 				return NULL;
 			}
 			/*
@@ -319,9 +323,10 @@ char *enter_repo(char *path, int strict)
 			strcpy(validated_path, path);
 			path = used_path;
 		}
-		else if (PATH_MAX - 10 < len)
+		else if (PATH_MAX - 10 < len) {
+			errno = ENAMETOOLONG;
 			return NULL;
-		else {
+		} else {
 			path = strcpy(used_path, path);
 			strcpy(validated_path, path);
 		}
@@ -331,23 +336,29 @@ char *enter_repo(char *path, int strict)
 			if (!access(path, F_OK)) {
 				strcat(validated_path, suffix[i]);
 				break;
+			} else if (errno == EACCES) {
+				return NULL;
 			}
 		}
-		if (!suffix[i] || chdir(path))
+		if (!suffix[i])
+			return NULL;
+		if (chdir(path))
 			return NULL;
 		path = validated_path;
 	}
 	else if (chdir(path))
 		return NULL;
 
-	if (access("objects", X_OK) == 0 && access("refs", X_OK) == 0 &&
-	    validate_headref("HEAD") == 0) {
-		set_git_dir(".");
-		check_repository_format();
-		return path;
+	if (access("objects", X_OK) || access("refs", X_OK))
+		return NULL;
+	if (validate_headref("HEAD")) {
+		errno = 0;
+		return NULL;
 	}
 
-	return NULL;
+	set_git_dir(".");
+	check_repository_format();
+	return path;
 }
 
 int set_shared_perm(const char *path, int mode)

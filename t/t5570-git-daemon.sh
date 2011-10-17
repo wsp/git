@@ -142,7 +142,7 @@ start_daemon --informative-errors
 
 test_expect_success 'clone non-existent' "test_remote_error    clone nowhere.git 'no such repository'"
 test_expect_success 'push disabled'      "test_remote_error    push  repo.git    'service not enabled'"
-test_expect_success 'read access denied' "test_remote_error -x fetch repo.git    'no such repository'"
+test_expect_success 'read access denied' "test_remote_error -x fetch repo.git    'permission denied'"
 test_expect_success 'not exported'       "test_remote_error -n fetch repo.git    'repository not exported'"
 
 stop_daemon
