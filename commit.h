@@ -15,6 +15,10 @@ struct commit {
 	struct object object;
 	void *util;
 	unsigned int indegree;
+
+	unsigned flags;
+#define COMMIT_HAS_NUL       01
+
 	unsigned long date;
 	struct commit_list *parents;
 	struct tree *tree;

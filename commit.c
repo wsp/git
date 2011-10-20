@@ -258,6 +258,7 @@ int parse_commit_buffer(struct commit *item, const void *buffer, unsigned long s
 	if (item->object.parsed)
 		return 0;
 	item->object.parsed = 1;
+	item->flags = memchr(buffer, '\0', size) ? COMMIT_HAS_NUL : 0;
 	tail += size;
 	if (tail <= bufptr + 46 || memcmp(bufptr, "tree ", 5) || bufptr[45] != '\n')
 		return error("bogus commit object %s", sha1_to_hex(item->object.sha1));
