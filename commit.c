@@ -74,30 +74,46 @@ struct commit *lookup_commit_reference_by_name(const char *name)
 	return commit;
 }
 
-static unsigned long parse_commit_date(const char *buf, const char *tail)
+/*
+ * The caller is reading from the beginning of a commit object that
+ * ends at "tail", and "bufptr" is its scan pointer. It has finished
+ * reading the "parent" lines, and expects "author" and "committer"
+ * lines to follow. Parse them and return the timestamp on the
+ * "committer" line. Update "*bufptr" to allow the caller to resume
+ * parsing the other headers and the body of the commit.
+ *
+ * Return 0 if parsing failed, without updating *bufptr.
+ */
+static unsigned long parse_commit_date(const char **bufptr, const char *tail)
 {
 	const char *dateptr;
+	const char *buf = *bufptr;
 
-	if (buf + 6 >= tail)
-		return 0;
-	if (memcmp(buf, "author", 6))
+	if (buf + 6 >= tail || memcmp(buf, "author", 6))
 		return 0;
 	while (buf < tail && *buf++ != '\n')
-		/* nada */;
-	if (buf + 9 >= tail)
-		return 0;
-	if (memcmp(buf, "committer", 9))
+		; /* skip the whole line */
+	if (buf + 9 >= tail || memcmp(buf, "committer", 9))
 		return 0;
 	while (buf < tail && *buf++ != '>')
-		/* nada */;
+		; /* skip the committer name and email */
 	if (buf >= tail)
 		return 0;
+
 	dateptr = buf;
 	while (buf < tail && *buf++ != '\n')
-		/* nada */;
+		; /* find the end of the line */
 	if (buf >= tail)
 		return 0;
-	/* dateptr < buf && buf[-1] == '\n', so strtoul will stop at buf-1 */
+
+	*bufptr = buf; /* beginning of the next line */
+
+	/*
+	 * Read the timestamp and stop at the SP before timezone. Note
+	 * that the timestamp may not be followed by SP TZ in a commit
+	 * object made by ancient Git, in which case this will stop at
+	 * the '\n' at the end of the line we just made sure exists.
+	 */
 	return strtoul(dateptr, NULL, 10);
 }
 
@@ -298,7 +314,7 @@ int parse_commit_buffer(struct commit *item, const void *buffer, unsigned long s
 			pptr = &commit_list_insert(new_parent, pptr)->next;
 		}
 	}
-	item->date = parse_commit_date(bufptr, tail);
+	item->date = parse_commit_date(&bufptr, tail);
 
 	return 0;
 }
