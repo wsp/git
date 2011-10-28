@@ -1156,13 +1156,34 @@ static int do_for_each_ref(const char *submodule, const char *base, each_ref_fn 
 {
 	int retval = 0;
 	struct ref_cache *refs = get_ref_cache(submodule);
+	struct ref_dir *extra_dir = &extra_refs;
+	struct ref_dir *packed_dir = get_packed_refs(refs);
+	struct ref_dir *loose_dir = get_loose_refs(refs);
 
-	retval = do_for_each_ref_in_dir(&extra_refs, 0,
+	if (base && *base) {
+		extra_dir = find_containing_dir(extra_dir, base, 0);
+		packed_dir = find_containing_dir(packed_dir, base, 0);
+		loose_dir = find_containing_dir(loose_dir, base, 0);
+	}
+
+	if (extra_dir)
+		retval = do_for_each_ref_in_dir(
+				extra_dir, 0,
+				base, fn, trim, flags, cb_data);
+	if (!retval) {
+		if (packed_dir && loose_dir)
+			retval = do_for_each_ref_in_dirs(
+					packed_dir, loose_dir,
 					base, fn, trim, flags, cb_data);
-	if (!retval)
-		retval = do_for_each_ref_in_dirs(get_packed_refs(refs),
-						 get_loose_refs(refs),
-						 base, fn, trim, flags, cb_data);
+		else if (packed_dir)
+			retval = do_for_each_ref_in_dir(
+					packed_dir, 0,
+					base, fn, trim, flags, cb_data);
+		else if (loose_dir)
+			retval = do_for_each_ref_in_dir(
+					loose_dir, 0,
+					base, fn, trim, flags, cb_data);
+	}
 
 	current_ref = NULL;
 	return retval;
