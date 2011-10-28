@@ -658,7 +658,7 @@ static int name_conflict_fn(const char *existingrefname, const unsigned char *sh
 			    int flags, void *cb_data)
 {
 	struct name_conflict_cb *data = (struct name_conflict_cb *)cb_data;
-	if (data->oldrefname && !strcmp(data->oldrefname, existingrefname))
+	if (!strcmp(data->oldrefname, existingrefname))
 		return 0;
 	if (names_conflict(data->refname, existingrefname)) {
 		data->conflicting_refname = existingrefname;
@@ -669,22 +669,48 @@ static int name_conflict_fn(const char *existingrefname, const unsigned char *sh
 
 /*
  * Return true iff a reference named refname could be created without
- * conflicting with the name of an existing reference.  If oldrefname
- * is non-NULL, ignore potential conflicts with oldrefname (e.g.,
- * because oldrefname is scheduled for deletion in the same
+ * conflicting with the name of an existing reference in direntry.  If
+ * oldrefname is non-NULL, ignore potential conflicts with oldrefname
+ * (e.g., because oldrefname is scheduled for deletion in the same
  * operation).
  */
 static int is_refname_available(const char *refname, const char *oldrefname,
 				struct ref_entry *direntry)
 {
+	int prefixlen = strlen(refname);
+	char *prefix;
+	char *slash;
 	struct name_conflict_cb data;
+
+	assert(direntry->flag & REF_DIR);
+
+	if (!oldrefname)
+		oldrefname = ""; /* invalid; cannot match any existing refname */
+
+	/* Check whether a prefix of refname is an existing reference: */
+	prefix = xmalloc(prefixlen + 2);
+	memcpy(prefix, refname, prefixlen + 1);
+	for (slash = strchr(prefix, '/'); slash; slash = strchr(slash + 1, '/')) {
+		*slash = '\0';
+		if (strcmp(oldrefname, prefix)) {
+			struct ref_entry *entry = find_ref(direntry, prefix);
+			if (entry) {
+				error("'%s' exists; cannot create '%s'", prefix, refname);
+				free(prefix);
+				return 0;
+			}
+		}
+		*slash = '/';
+	}
+
+	/* Check whether refname is a proper prefix of an existing reference: */
+	prefix[prefixlen++] = '/';
+	prefix[prefixlen] = '\0';
 	data.refname = refname;
 	data.oldrefname = oldrefname;
 	data.conflicting_refname = NULL;
 
-	assert(direntry->flag & REF_DIR);
-
-	if (do_for_each_ref_in_dir(direntry, 0, "", name_conflict_fn,
+	if (do_for_each_ref_in_dir(direntry, 0, prefix, name_conflict_fn,
 				   0, DO_FOR_EACH_INCLUDE_BROKEN,
 				   &data)) {
 		error("'%s' exists; cannot create '%s'",
