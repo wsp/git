@@ -855,13 +855,13 @@ static void get_ref_dir(struct ref_cache *refs, const char *dirname)
 	}
 }
 
-static struct ref_dir *get_loose_refs(struct ref_cache *refs)
+static struct ref_entry *get_loose_refs(struct ref_cache *refs)
 {
 	if (!refs->loose) {
 		refs->loose = create_dir_entry("");
 		get_ref_dir(refs, "refs/");
 	}
-	return &refs->loose->u.subdir;
+	return refs->loose;
 }
 
 /* We allow "recursive" symbolic refs. Only within reason, though */
@@ -1173,7 +1173,8 @@ static int do_for_each_ref(const char *submodule, const char *base, each_ref_fn 
 	struct ref_dir *extra_dir = extra_refs ? &extra_refs->u.subdir : NULL;
 	struct ref_entry *packed_direntry = get_packed_refs(refs);
 	struct ref_dir *packed_dir = &packed_direntry->u.subdir;
-	struct ref_dir *loose_dir = get_loose_refs(refs);
+	struct ref_entry *loose_direntry = get_loose_refs(refs);
+	struct ref_dir *loose_dir = &loose_direntry->u.subdir;
 
 	if (base && *base) {
 		if (extra_dir)
@@ -1730,7 +1731,7 @@ int rename_ref(const char *oldrefname, const char *newrefname, const char *logms
 	if (!is_refname_available(newrefname, oldrefname, &get_packed_refs(refs)->u.subdir))
 		return 1;
 
-	if (!is_refname_available(newrefname, oldrefname, get_loose_refs(refs)))
+	if (!is_refname_available(newrefname, oldrefname, &get_loose_refs(refs)->u.subdir))
 		return 1;
 
 	if (log && rename(git_path("logs/%s", oldrefname), git_path(TMP_RENAMED_LOG)))
