@@ -380,9 +380,11 @@ static struct ref_entry *find_ref(struct ref_entry *direntry, const char *refnam
  * subdirectories as necessary.  dir must represent the top-level
  * directory.  Return 0 on success.
  */
-static int add_ref(struct ref_dir *dir, struct ref_entry *ref)
+static int add_ref(struct ref_entry *direntry, struct ref_entry *ref)
 {
-	dir = find_containing_dir(dir, ref->name, 1);
+	struct ref_dir *dir;
+	assert(direntry->flag & REF_DIR);
+	dir = find_containing_dir(&direntry->u.subdir, ref->name, 1);
 	if (!dir)
 		return -1;
 	add_entry_to_dir(dir, ref);
@@ -738,7 +740,7 @@ static void read_packed_refs(FILE *f, struct ref_entry *direntry)
 		refname = parse_ref_line(refline, sha1);
 		if (refname) {
 			last = create_ref_entry(refname, sha1, flag);
-			add_ref(&direntry->u.subdir, last);
+			add_ref(direntry, last);
 			continue;
 		}
 		if (last &&
@@ -754,7 +756,7 @@ void add_extra_ref(const char *refname, const unsigned char *sha1, int flag)
 {
 	if (!extra_refs)
 		extra_refs = create_dir_entry("");
-	add_ref(&extra_refs->u.subdir, create_ref_entry(refname, sha1, flag));
+	add_ref(extra_refs, create_ref_entry(refname, sha1, flag));
 }
 
 void clear_extra_refs(void)
