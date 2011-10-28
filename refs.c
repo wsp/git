@@ -143,6 +143,8 @@ struct ref_value {
 	unsigned char peeled[20];
 };
 
+struct ref_cache;
+
 struct ref_dir {
 	int nr, alloc;
 
@@ -150,6 +152,12 @@ struct ref_dir {
 	int sorted;
 
 	struct ref_entry **entries;
+
+	/*
+	 * A pointer to the ref_cache that contains this ref_dir, or
+	 * NULL if this ref_dir is used for extra_refs.
+	 */
+	struct ref_cache *ref_cache;
 };
 
 /* ISSYMREF=0x01, ISPACKED=0x02, and ISBROKEN=0x04 are public interfaces */
@@ -261,7 +269,8 @@ static void clear_ref_dir(struct ref_dir *dir)
  * dirname is the name of the directory with a trailing slash (e.g.,
  * "refs/heads/") or "" for the top-level directory.
  */
-static struct ref_entry *create_dir_entry(const char *dirname)
+static struct ref_entry *create_dir_entry(struct ref_cache *ref_cache,
+					  const char *dirname)
 {
 	struct ref_entry *direntry;
 	if (*dirname) {
@@ -275,6 +284,7 @@ static struct ref_entry *create_dir_entry(const char *dirname)
 		direntry->name[0] = '\0';
 	}
 	direntry->flag = REF_DIR;
+	direntry->u.subdir.ref_cache = ref_cache;
 	return direntry;
 }
 
@@ -354,7 +364,8 @@ static struct ref_entry *find_containing_direntry(struct ref_entry *direntry,
 				direntry = NULL;
 				break;
 			}
-			entry = create_dir_entry(refname_copy);
+			entry = create_dir_entry(direntry->u.subdir.ref_cache,
+						 refname_copy);
 			add_entry(direntry, entry);
 		}
 		slash[1] = tmp;
@@ -771,7 +782,7 @@ static void read_packed_refs(FILE *f, struct ref_entry *direntry)
 void add_extra_ref(const char *refname, const unsigned char *sha1, int flag)
 {
 	if (!extra_refs)
-		extra_refs = create_dir_entry("");
+		extra_refs = create_dir_entry(NULL, "");
 	add_ref(extra_refs, create_ref_entry(refname, sha1, flag));
 }
 
@@ -789,7 +800,7 @@ static struct ref_entry *get_packed_refs(struct ref_cache *refs)
 		const char *packed_refs_file;
 		FILE *f;
 
-		refs->packed = create_dir_entry("");
+		refs->packed = create_dir_entry(refs, "");
 		if (*refs->name)
 			packed_refs_file = git_path_submodule(refs->name, "packed-refs");
 		else
@@ -881,7 +892,7 @@ static void get_ref_dir(struct ref_cache *refs, const char *dirname)
 static struct ref_entry *get_loose_refs(struct ref_cache *refs)
 {
 	if (!refs->loose) {
-		refs->loose = create_dir_entry("");
+		refs->loose = create_dir_entry(refs, "");
 		get_ref_dir(refs, "refs/");
 	}
 	return refs->loose;
