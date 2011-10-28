@@ -256,7 +256,7 @@ static void clear_ref_dir(struct ref_dir *dir)
 /*
  * Create a struct ref_entry object for the specified dirname.
  * dirname is the name of the directory with a trailing slash (e.g.,
- * "refs/heads/").
+ * "refs/heads/") or "" for the top-level directory.
  */
 static struct ref_entry *create_dir_entry(const char *dirname)
 {
@@ -609,28 +609,28 @@ static int is_refname_available(const char *refname, const char *oldrefname,
  */
 static struct ref_cache {
 	struct ref_cache *next;
-	char did_loose;
-	char did_packed;
-	struct ref_dir loose;
-	struct ref_dir packed;
+	struct ref_entry *loose;
+	struct ref_entry *packed;
 	/* The submodule name, or "" for the main repo. */
 	char name[FLEX_ARRAY];
 } *ref_cache;
 
-static struct ref_dir extra_refs;
+static struct ref_entry *extra_refs;
 
 static void clear_packed_ref_cache(struct ref_cache *refs)
 {
-	if (refs->did_packed)
-		clear_ref_dir(&refs->packed);
-	refs->did_packed = 0;
+	if (refs->packed) {
+		free_ref_entry(refs->packed);
+		refs->packed = NULL;
+	}
 }
 
 static void clear_loose_ref_cache(struct ref_cache *refs)
 {
-	if (refs->did_loose)
-		clear_ref_dir(&refs->loose);
-	refs->did_loose = 0;
+	if (refs->loose) {
+		free_ref_entry(refs->loose);
+		refs->loose = NULL;
+	}
 }
 
 static struct ref_cache *create_ref_cache(const char *submodule)
@@ -747,32 +747,37 @@ static void read_packed_refs(FILE *f, struct ref_dir *dir)
 
 void add_extra_ref(const char *refname, const unsigned char *sha1, int flag)
 {
-	add_ref(&extra_refs, create_ref_entry(refname, sha1, flag));
+	if (!extra_refs)
+		extra_refs = create_dir_entry("");
+	add_ref(&extra_refs->u.subdir, create_ref_entry(refname, sha1, flag));
 }
 
 void clear_extra_refs(void)
 {
-	clear_ref_dir(&extra_refs);
+	if (extra_refs) {
+		free_ref_entry(extra_refs);
+		extra_refs = NULL;
+	}
 }
 
 static struct ref_dir *get_packed_refs(struct ref_cache *refs)
 {
-	if (!refs->did_packed) {
+	if (!refs->packed) {
 		const char *packed_refs_file;
 		FILE *f;
 
+		refs->packed = create_dir_entry("");
 		if (*refs->name)
 			packed_refs_file = git_path_submodule(refs->name, "packed-refs");
 		else
 			packed_refs_file = git_path("packed-refs");
 		f = fopen(packed_refs_file, "r");
 		if (f) {
-			read_packed_refs(f, &refs->packed);
+			read_packed_refs(f, &refs->packed->u.subdir);
 			fclose(f);
 		}
-		refs->did_packed = 1;
 	}
-	return &refs->packed;
+	return &refs->packed->u.subdir;
 }
 
 /*
@@ -789,7 +794,7 @@ static void get_ref_dir(struct ref_cache *refs, const char *dirname)
 
 	assert(dirnamelen && dirname[dirnamelen - 1] == '/');
 
-	dir = find_containing_dir(&refs->loose, dirname, 1);
+	dir = find_containing_dir(&refs->loose->u.subdir, dirname, 1);
 
 	if (*refs->name)
 		path = git_path_submodule(refs->name, "%s", dirname);
@@ -852,11 +857,11 @@ static void get_ref_dir(struct ref_cache *refs, const char *dirname)
 
 static struct ref_dir *get_loose_refs(struct ref_cache *refs)
 {
-	if (!refs->did_loose) {
+	if (!refs->loose) {
+		refs->loose = create_dir_entry("");
 		get_ref_dir(refs, "refs/");
-		refs->did_loose = 1;
 	}
-	return &refs->loose;
+	return &refs->loose->u.subdir;
 }
 
 /* We allow "recursive" symbolic refs. Only within reason, though */
@@ -1165,12 +1170,13 @@ static int do_for_each_ref(const char *submodule, const char *base, each_ref_fn 
 {
 	int retval = 0;
 	struct ref_cache *refs = get_ref_cache(submodule);
-	struct ref_dir *extra_dir = &extra_refs;
+	struct ref_dir *extra_dir = extra_refs ? &extra_refs->u.subdir : NULL;
 	struct ref_dir *packed_dir = get_packed_refs(refs);
 	struct ref_dir *loose_dir = get_loose_refs(refs);
 
 	if (base && *base) {
-		extra_dir = find_containing_dir(extra_dir, base, 0);
+		if (extra_dir)
+			extra_dir = find_containing_dir(extra_dir, base, 0);
 		packed_dir = find_containing_dir(packed_dir, base, 0);
 		loose_dir = find_containing_dir(loose_dir, base, 0);
 	}
