@@ -1784,7 +1784,9 @@ static struct lock_file packlock;
 static int repack_without_ref(const char *refname)
 {
 	struct repack_without_ref_sb data;
-	struct ref_entry *packed = get_packed_refs(get_ref_cache(NULL));
+	struct ref_cache *refs = get_ref_cache(NULL);
+	struct ref_entry *packed = get_packed_refs(refs);
+
 	if (find_ref(packed, refname) == NULL)
 		return 0;
 	data.refname = refname;
@@ -1794,6 +1796,7 @@ static int repack_without_ref(const char *refname)
 		return error("cannot delete '%s' from packed refs", refname);
 	}
 	do_for_each_ref_in_dir(packed, 0, "", repack_without_ref_fn, 0, 0, &data);
+	clear_packed_ref_cache(refs);
 	return commit_lock_file(&packlock);
 }
 
@@ -1822,6 +1825,7 @@ int delete_ref(const char *refname, const unsigned char *sha1, int delopt)
 
 		if (!(delopt & REF_NODEREF))
 			lock->lk->filename[i] = '.';
+		clear_loose_ref_cache(get_ref_cache(NULL));
 	}
 	/* removing the loose one could have resurrected an earlier
 	 * packed one.  Also, if it was not loose we need to repack
@@ -1830,7 +1834,6 @@ int delete_ref(const char *refname, const unsigned char *sha1, int delopt)
 	ret |= repack_without_ref(refname);
 
 	unlink_or_warn(git_path("logs/%s", lock->ref_name));
-	invalidate_ref_cache(NULL);
 	unlock_ref(lock);
 	return ret;
 }
