@@ -815,21 +815,20 @@ static struct ref_entry *get_packed_refs(struct ref_cache *refs)
 }
 
 /*
- * dirname must match the name associated with dir; in particular, it
- * must end with '/'.
+ * Fill direntry with loose references read from the filesystem.
  */
-static void get_ref_dir(struct ref_cache *refs, const char *dirname)
+static void read_loose_refs(struct ref_entry *direntry)
 {
 	DIR *d;
 	char *path;
+	char *dirname = direntry->name;
 	int dirnamelen = strlen(dirname);
 	int pathlen;
-	struct ref_entry *direntry;
+	struct ref_cache *refs;
 
-	assert(dirnamelen && dirname[dirnamelen - 1] == '/');
-
-	direntry = find_containing_direntry(refs->loose, dirname, 1);
-
+	assert(direntry->flag & REF_DIR);
+	assert(dirnamelen && direntry->name[dirnamelen - 1] == '/');
+	refs = direntry->u.subdir.ref_cache;
 	if (*refs->name)
 		path = git_path_submodule(refs->name, "%s", dirname);
 	else
@@ -867,7 +866,9 @@ static void get_ref_dir(struct ref_cache *refs, const char *dirname)
 			if (S_ISDIR(st.st_mode)) {
 				refname[dirnamelen + namelen] = '/';
 				refname[dirnamelen + namelen + 1] = '\0';
-				get_ref_dir(refs, refname);
+				read_loose_refs(find_containing_direntry(
+								refs->loose,
+								refname, 1));
 				continue;
 			}
 			if (*refs->name) {
@@ -893,7 +894,7 @@ static struct ref_entry *get_loose_refs(struct ref_cache *refs)
 {
 	if (!refs->loose) {
 		refs->loose = create_dir_entry(refs, "");
-		get_ref_dir(refs, "refs/");
+		read_loose_refs(find_containing_direntry(refs->loose, "refs/", 1));
 	}
 	return refs->loose;
 }
