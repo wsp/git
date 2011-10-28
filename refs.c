@@ -831,6 +831,7 @@ static const char *parse_ref_line(char *line, unsigned char *sha1)
 static void read_packed_refs(FILE *f, struct ref_entry *direntry)
 {
 	struct ref_entry *last = NULL;
+	struct ref_entry *current_direntry = NULL;
 	char refline[PATH_MAX];
 	int flag = REF_ISPACKED;
 
@@ -850,8 +851,21 @@ static void read_packed_refs(FILE *f, struct ref_entry *direntry)
 
 		refname = parse_ref_line(refline, sha1);
 		if (refname) {
+			if (current_direntry) {
+				char *slash = strrchr(refname, '/');
+				if (!slash
+				    || strncmp(current_direntry->name, refname,
+					       slash - refname + 1)
+				    || current_direntry->name[slash - refname + 1] != '\0')
+					/* The new refname does not go in current_direntry */
+					current_direntry = NULL;
+			}
+			if (!current_direntry)
+				current_direntry = find_containing_direntry(
+						direntry, refname, 1);
+
 			last = create_ref_entry(refname, sha1, flag);
-			add_ref(direntry, last);
+			add_entry(current_direntry, last);
 			continue;
 		}
 		if (last &&
