@@ -713,45 +713,58 @@ static int do_for_each_ref_in_array(struct ref_array *array, int offset,
 	return 0;
 }
 
+static int do_for_each_ref_in_arrays(struct ref_array *array1,
+				     struct ref_array *array2,
+				     const char *base, each_ref_fn fn, int trim,
+				     int flags, void *cb_data)
+{
+	int retval;
+	int i1 = 0, i2 = 0;
+
+	while (1) {
+		struct ref_entry *e1, *e2;
+		int cmp;
+		if (i1 == array1->nr) {
+			return do_for_each_ref_in_array(array2, i2,
+							base, fn, trim, flags, cb_data);
+		}
+		if (i2 == array2->nr) {
+			return do_for_each_ref_in_array(array1, i1,
+							base, fn, trim, flags, cb_data);
+		}
+		e1 = array1->refs[i1];
+		e2 = array2->refs[i2];
+		cmp = strcmp(e1->name, e2->name);
+		if (cmp == 0) {
+			/* Two refs with the same name; ignore the one from array1. */
+			i1++;
+			continue;
+		}
+		if (cmp < 0) {
+			retval = do_one_ref(base, fn, trim, flags, cb_data, e1);
+			i1++;
+		} else {
+			retval = do_one_ref(base, fn, trim, flags, cb_data, e2);
+			i2++;
+		}
+		if (retval)
+			return retval;
+	}
+}
+
 static int do_for_each_ref(const char *submodule, const char *base, each_ref_fn fn,
 			   int trim, int flags, void *cb_data)
 {
-	int retval = 0, p = 0, l = 0;
+	int retval = 0;
 	struct ref_cache *refs = get_ref_cache(submodule);
-	struct ref_array *packed = get_packed_refs(refs);
-	struct ref_array *loose = get_loose_refs(refs);
 
 	retval = do_for_each_ref_in_array(&extra_refs, 0,
 					  base, fn, trim, flags, cb_data);
-	if (retval)
-		goto end_each;
+	if (!retval)
+		retval = do_for_each_ref_in_arrays(get_packed_refs(refs),
+						   get_loose_refs(refs),
+						   base, fn, trim, flags, cb_data);
 
-	while (p < packed->nr && l < loose->nr) {
-		struct ref_entry *entry;
-		int cmp = strcmp(packed->refs[p]->name, loose->refs[l]->name);
-		if (!cmp) {
-			p++;
-			continue;
-		}
-		if (cmp > 0) {
-			entry = loose->refs[l++];
-		} else {
-			entry = packed->refs[p++];
-		}
-		retval = do_one_ref(base, fn, trim, flags, cb_data, entry);
-		if (retval)
-			goto end_each;
-	}
-
-	if (l < loose->nr) {
-		retval = do_for_each_ref_in_array(loose, l,
-						  base, fn, trim, flags, cb_data);
-	} else {
-		retval = do_for_each_ref_in_array(packed, p,
-						  base, fn, trim, flags, cb_data);
-	}
-
-end_each:
 	current_ref = NULL;
 	return retval;
 }
