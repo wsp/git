@@ -234,8 +234,11 @@ static void free_ref_entry(struct ref_entry *entry)
  * stored directly in dir; no recursion into subdirectories is
  * done.
  */
-static void add_entry_to_dir(struct ref_dir *dir, struct ref_entry *entry)
+static void add_entry(struct ref_entry *direntry, struct ref_entry *entry)
 {
+	struct ref_dir *dir;
+	assert(direntry->flag & REF_DIR);
+	dir = &direntry->u.subdir;
 	ALLOC_GROW(dir->entries, dir->nr + 1, dir->alloc);
 	dir->entries[dir->nr++] = entry;
 }
@@ -352,7 +355,7 @@ static struct ref_entry *find_containing_direntry(struct ref_entry *direntry,
 				break;
 			}
 			entry = create_dir_entry(refname_copy);
-			add_entry_to_dir(&direntry->u.subdir, entry);
+			add_entry(direntry, entry);
 		}
 		slash[1] = tmp;
 		assert(entry->flag & REF_DIR);
@@ -390,7 +393,7 @@ static int add_ref(struct ref_entry *direntry, struct ref_entry *ref)
 	direntry = find_containing_direntry(direntry, ref->name, 1);
 	if (!direntry)
 		return -1;
-	add_entry_to_dir(&direntry->u.subdir, ref);
+	add_entry(direntry, ref);
 	return 0;
 }
 
@@ -858,8 +861,7 @@ static void get_ref_dir(struct ref_cache *refs, const char *dirname)
 					hashclr(sha1);
 					flag |= REF_ISBROKEN;
 				}
-			add_entry_to_dir(&direntry->u.subdir,
-					 create_ref_entry(refname, sha1, flag));
+			add_entry(direntry, create_ref_entry(refname, sha1, flag));
 		}
 		free(refname);
 		closedir(d);
