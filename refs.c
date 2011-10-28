@@ -715,12 +715,13 @@ static const char *parse_ref_line(char *line, unsigned char *sha1)
 	return line;
 }
 
-static void read_packed_refs(FILE *f, struct ref_dir *dir)
+static void read_packed_refs(FILE *f, struct ref_entry *direntry)
 {
 	struct ref_entry *last = NULL;
 	char refline[PATH_MAX];
 	int flag = REF_ISPACKED;
 
+	assert(direntry->flag & REF_DIR);
 	while (fgets(refline, sizeof(refline), f)) {
 		unsigned char sha1[20];
 		const char *refname;
@@ -737,7 +738,7 @@ static void read_packed_refs(FILE *f, struct ref_dir *dir)
 		refname = parse_ref_line(refline, sha1);
 		if (refname) {
 			last = create_ref_entry(refname, sha1, flag);
-			add_ref(dir, last);
+			add_ref(&direntry->u.subdir, last);
 			continue;
 		}
 		if (last &&
@@ -777,7 +778,7 @@ static struct ref_entry *get_packed_refs(struct ref_cache *refs)
 			packed_refs_file = git_path("packed-refs");
 		f = fopen(packed_refs_file, "r");
 		if (f) {
-			read_packed_refs(f, &refs->packed->u.subdir);
+			read_packed_refs(f, refs->packed);
 			fclose(f);
 		}
 	}
