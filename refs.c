@@ -471,17 +471,20 @@ static int do_one_ref(const char *base, each_ref_fn fn, int trim,
 	return fn(entry->name + trim, entry->u.value.sha1, entry->flag, cb_data);
 }
 
-static int do_for_each_ref_in_dir(struct ref_dir *dir, int offset,
+static int do_for_each_ref_in_dir(struct ref_entry *direntry, int offset,
 				  const char *base,
 				  each_ref_fn fn, int trim, int flags, void *cb_data)
 {
 	int i;
+	struct ref_dir *dir;
+	assert(direntry->flag & REF_DIR);
+	dir = &direntry->u.subdir;
 	sort_ref_dir(dir);
 	for (i = offset; i < dir->nr; i++) {
 		struct ref_entry *entry = dir->entries[i];
 		int retval;
 		if (entry->flag & REF_DIR) {
-			retval = do_for_each_ref_in_dir(&entry->u.subdir, 0,
+			retval = do_for_each_ref_in_dir(entry, 0,
 							base, fn, trim, flags, cb_data);
 		} else {
 			retval = do_one_ref(base, fn, trim, flags, cb_data, entry);
@@ -492,25 +495,30 @@ static int do_for_each_ref_in_dir(struct ref_dir *dir, int offset,
 	return 0;
 }
 
-static int do_for_each_ref_in_dirs(struct ref_dir *dir1,
-				   struct ref_dir *dir2,
+static int do_for_each_ref_in_dirs(struct ref_entry *direntry1,
+				   struct ref_entry *direntry2,
 				   const char *base, each_ref_fn fn, int trim,
 				   int flags, void *cb_data)
 {
 	int retval;
 	int i1 = 0, i2 = 0;
+	struct ref_dir *dir1, *dir2;
 
+	assert(direntry1->flag & REF_DIR);
+	assert(direntry2->flag & REF_DIR);
+	dir1 = &direntry1->u.subdir;
+	dir2 = &direntry2->u.subdir;
 	sort_ref_dir(dir1);
 	sort_ref_dir(dir2);
 	while (1) {
 		struct ref_entry *e1, *e2, *entry;
 		int cmp;
 		if (i1 == dir1->nr) {
-			return do_for_each_ref_in_dir(dir2, i2,
+			return do_for_each_ref_in_dir(direntry2, i2,
 						      base, fn, trim, flags, cb_data);
 		}
 		if (i2 == dir2->nr) {
-			return do_for_each_ref_in_dir(dir1, i1,
+			return do_for_each_ref_in_dir(direntry1, i1,
 						      base, fn, trim, flags, cb_data);
 		}
 		e1 = dir1->entries[i1];
@@ -520,7 +528,7 @@ static int do_for_each_ref_in_dirs(struct ref_dir *dir1,
 			if ((e1->flag & REF_DIR) && (e2->flag & REF_DIR)) {
 				/* Both are directories; descend them in parallel. */
 				retval = do_for_each_ref_in_dirs(
-						&e1->u.subdir, &e2->u.subdir,
+						e1, e2,
 						base, fn, trim, flags, cb_data);
 				i1++;
 				i2++;
@@ -543,7 +551,7 @@ static int do_for_each_ref_in_dirs(struct ref_dir *dir1,
 			}
 			if (entry->flag & REF_DIR) {
 				retval = do_for_each_ref_in_dir(
-						&entry->u.subdir, 0,
+						entry, 0,
 						base, fn, trim, flags, cb_data);
 			} else {
 				retval = do_one_ref(base, fn, trim, flags, cb_data, entry);
@@ -605,7 +613,7 @@ static int is_refname_available(const char *refname, const char *oldrefname,
 
 	assert(direntry->flag & REF_DIR);
 
-	if (do_for_each_ref_in_dir(&direntry->u.subdir, 0, "", name_conflict_fn,
+	if (do_for_each_ref_in_dir(direntry, 0, "", name_conflict_fn,
 				   0, DO_FOR_EACH_INCLUDE_BROKEN,
 				   &data)) {
 		error("'%s' exists; cannot create '%s'",
@@ -1196,21 +1204,20 @@ static int do_for_each_ref(const char *submodule, const char *base, each_ref_fn 
 
 	if (extra_direntry)
 		retval = do_for_each_ref_in_dir(
-				&extra_direntry->u.subdir, 0,
+				extra_direntry, 0,
 				base, fn, trim, flags, cb_data);
 	if (!retval) {
 		if (packed_direntry && loose_direntry)
 			retval = do_for_each_ref_in_dirs(
-					&packed_direntry->u.subdir,
-					&loose_direntry->u.subdir,
+					packed_direntry, loose_direntry,
 					base, fn, trim, flags, cb_data);
 		else if (packed_direntry)
 			retval = do_for_each_ref_in_dir(
-					&packed_direntry->u.subdir, 0,
+					packed_direntry, 0,
 					base, fn, trim, flags, cb_data);
 		else if (loose_direntry)
 			retval = do_for_each_ref_in_dir(
-					&loose_direntry->u.subdir, 0,
+					loose_direntry, 0,
 					base, fn, trim, flags, cb_data);
 	}
 
@@ -1668,8 +1675,7 @@ static int repack_without_ref(const char *refname)
 		unable_to_lock_error(git_path("packed-refs"), errno);
 		return error("cannot delete '%s' from packed refs", refname);
 	}
-	do_for_each_ref_in_dir(&packed->u.subdir, 0,
-			       "", repack_without_ref_fn, 0, 0, &data);
+	do_for_each_ref_in_dir(packed, 0, "", repack_without_ref_fn, 0, 0, &data);
 	return commit_lock_file(&packlock);
 }
 
