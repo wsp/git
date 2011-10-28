@@ -285,7 +285,7 @@ static int ref_entry_cmp(const void *a, const void *b)
 	return strcmp(one->name, two->name);
 }
 
-static void sort_ref_dir(struct ref_dir *dir);
+static void sort_ref_dir(struct ref_entry *direntry);
 
 /*
  * Return the entry with the given refname from the ref_dir
@@ -313,7 +313,7 @@ static struct ref_entry *search_ref_dir(struct ref_entry *direntry, const char *
 	 * references one after the other to a single subdirectory
 	 * doesn't require *any* intermediate sorting.
 	 */
-	sort_ref_dir(dir);
+	sort_ref_dir(direntry);
 
 	len = strlen(refname) + 1;
 	e = xmalloc(sizeof(struct ref_entry) + len);
@@ -424,11 +424,13 @@ static int is_dup_ref(const struct ref_entry *ref1, const struct ref_entry *ref2
  * Sort the entries in dir (if they are not already sorted).  Sort
  * only dir itself, not its subdirectories.
  */
-static void sort_ref_dir(struct ref_dir *dir)
+static void sort_ref_dir(struct ref_entry *direntry)
 {
 	int i, j;
 	struct ref_entry *last = NULL;
-
+	struct ref_dir *dir;
+	assert(direntry->flag & REF_DIR);
+	dir = &direntry->u.subdir;
 	if (dir->sorted == dir->nr)
 		return; /* This directory is already sorted and de-duped */
 
@@ -479,7 +481,7 @@ static int do_for_each_ref_in_dir(struct ref_entry *direntry, int offset,
 	struct ref_dir *dir;
 	assert(direntry->flag & REF_DIR);
 	dir = &direntry->u.subdir;
-	sort_ref_dir(dir);
+	sort_ref_dir(direntry);
 	for (i = offset; i < dir->nr; i++) {
 		struct ref_entry *entry = dir->entries[i];
 		int retval;
@@ -508,8 +510,8 @@ static int do_for_each_ref_in_dirs(struct ref_entry *direntry1,
 	assert(direntry2->flag & REF_DIR);
 	dir1 = &direntry1->u.subdir;
 	dir2 = &direntry2->u.subdir;
-	sort_ref_dir(dir1);
-	sort_ref_dir(dir2);
+	sort_ref_dir(direntry1);
+	sort_ref_dir(direntry2);
 	while (1) {
 		struct ref_entry *e1, *e2, *entry;
 		int cmp;
