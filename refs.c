@@ -288,11 +288,14 @@ static void sort_ref_dir(struct ref_dir *dir);
  * Return the entry with the given refname from the ref_dir
  * (non-recursively).  Return NULL if no such entry is found.
  */
-static struct ref_entry *search_ref_dir(struct ref_dir *dir, const char *refname)
+static struct ref_entry *search_ref_dir(struct ref_entry *direntry, const char *refname)
 {
 	struct ref_entry *e, **r;
 	int len;
+	struct ref_dir *dir;
 
+	assert(direntry->flag & REF_DIR);
+	dir = &direntry->u.subdir;
 	if (refname == NULL || !dir->nr)
 		return NULL;
 
@@ -342,7 +345,7 @@ static struct ref_entry *find_containing_direntry(struct ref_entry *direntry,
 		char tmp = slash[1];
 		struct ref_entry *entry;
 		slash[1] = '\0';
-		entry = search_ref_dir(&direntry->u.subdir, refname_copy);
+		entry = search_ref_dir(direntry, refname_copy);
 		if (!entry) {
 			if (!mkdir) {
 				direntry = NULL;
@@ -372,7 +375,7 @@ static struct ref_entry *find_ref(struct ref_entry *direntry, const char *refnam
 	direntry = find_containing_direntry(direntry, refname, 0);
 	if (!direntry)
 		return NULL;
-	entry = search_ref_dir(&direntry->u.subdir, refname);
+	entry = search_ref_dir(direntry, refname);
 	return (entry && !(entry->flag & REF_DIR)) ? entry : NULL;
 }
 
