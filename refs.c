@@ -298,9 +298,14 @@ static struct ref_entry *search_ref_dir(struct ref_dir *dir, const char *refname
 
 	/*
 	 * We need dir to be sorted so that binary search works.
-	 * Calling sort_ref_dir() here is not quite as terribly
-	 * inefficient as it looks, because directories that are
-	 * already sorted are not re-sorted.
+	 * Calling sort_ref_dir() here is not as terribly inefficient
+	 * as it looks.  (1) If the directory is already sorted, it is
+	 * not re-sorted. (2) When adding a reference,
+	 * search_ref_dir() is only called to find the containing
+	 * subdirectories; there is no search of the directory to
+	 * which the reference will be stored.  Thus adding a bunch of
+	 * references one after the other to a single subdirectory
+	 * doesn't require *any* intermediate sorting.
 	 */
 	sort_ref_dir(dir);
 
@@ -406,26 +411,16 @@ static int is_dup_ref(const struct ref_entry *ref1, const struct ref_entry *ref2
 }
 
 /*
- * Sort the entries in dir and its subdirectories (if they are not
- * already sorted).
+ * Sort the entries in dir (if they are not already sorted).  Sort
+ * only dir itself, not its subdirectories.
  */
 static void sort_ref_dir(struct ref_dir *dir)
 {
 	int i, j;
 	struct ref_entry *last = NULL;
 
-	if (dir->sorted == dir->nr) {
-		/*
-		 * This directory is already sorted and de-duped, but
-		 * we still have to sort subdirectories.
-		 */
-		for (i = 0; i < dir->nr; i++) {
-			struct ref_entry *entry = dir->entries[i];
-			if (entry->flag & REF_DIR)
-				sort_ref_dir(&entry->u.subdir);
-		}
-		return;
-	}
+	if (dir->sorted == dir->nr)
+		return; /* This directory is already sorted and de-duped */
 
 	qsort(dir->entries, dir->nr, sizeof(*dir->entries), ref_entry_cmp);
 
@@ -435,7 +430,6 @@ static void sort_ref_dir(struct ref_dir *dir)
 		if (last && is_dup_ref(last, entry)) {
 			free_ref_entry(entry);
 		} else if (entry->flag & REF_DIR) {
-			sort_ref_dir(&entry->u.subdir);
 			dir->entries[i++] = entry;
 			last = NULL;
 		} else {
@@ -472,6 +466,7 @@ static int do_for_each_ref_in_dir(struct ref_dir *dir, int offset,
 				  each_ref_fn fn, int trim, int flags, void *cb_data)
 {
 	int i;
+	sort_ref_dir(dir);
 	for (i = offset; i < dir->nr; i++) {
 		struct ref_entry *entry = dir->entries[i];
 		int retval;
@@ -495,6 +490,8 @@ static int do_for_each_ref_in_dirs(struct ref_dir *dir1,
 	int retval;
 	int i1 = 0, i2 = 0;
 
+	sort_ref_dir(dir1);
+	sort_ref_dir(dir2);
 	while (1) {
 		struct ref_entry *e1, *e2, *entry;
 		int cmp;
@@ -746,7 +743,6 @@ static void read_packed_refs(FILE *f, struct ref_dir *dir)
 		    !get_sha1_hex(refline + 1, sha1))
 			hashcpy(last->u.value.peeled, sha1);
 	}
-	sort_ref_dir(dir);
 }
 
 void add_extra_ref(const char *refname, const unsigned char *sha1, int flag)
@@ -849,7 +845,6 @@ static struct ref_dir *get_loose_refs(struct ref_cache *refs)
 {
 	if (!refs->did_loose) {
 		get_ref_dir(refs, "refs", &refs->loose);
-		sort_ref_dir(&refs->loose);
 		refs->did_loose = 1;
 	}
 	return &refs->loose;
