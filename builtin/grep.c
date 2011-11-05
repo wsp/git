@@ -27,8 +27,8 @@ static char const * const grep_usage[] = {
 static int use_threads = 1;
 
 #ifndef NO_PTHREADS
-#define THREADS 8
-static pthread_t threads[THREADS];
+static int nthreads;
+static pthread_t *threads;
 
 static void *load_sha1(const unsigned char *sha1, unsigned long *size,
 		       const char *name);
@@ -36,7 +36,7 @@ static void *load_file(const char *filename, size_t *sz);
 
 enum work_type {WORK_SHA1, WORK_FILE};
 
-/* We use one producer thread and THREADS consumer
+/* We use one producer thread and online_cpus() consumer
  * threads. The producer adds struct work_items to 'todo' and the
  * consumers pick work items from the same array.
  */
@@ -226,6 +226,8 @@ static void start_threads(struct grep_opt *opt)
 {
 	int i;
 
+	threads = xmalloc(nthreads * sizeof(pthread_t));
+
 	pthread_mutex_init(&grep_mutex, NULL);
 	pthread_mutex_init(&read_sha1_mutex, NULL);
 	pthread_cond_init(&cond_add, NULL);
@@ -236,7 +238,7 @@ static void start_threads(struct grep_opt *opt)
 		strbuf_init(&todo[i].out, 0);
 	}
 
-	for (i = 0; i < ARRAY_SIZE(threads); i++) {
+	for (i = 0; i < nthreads; i++) {
 		int err;
 		struct grep_opt *o = grep_opt_dup(opt);
 		o->output = strbuf_out;
@@ -267,7 +269,7 @@ static int wait_all(void)
 	pthread_cond_broadcast(&cond_add);
 	grep_unlock();
 
-	for (i = 0; i < ARRAY_SIZE(threads); i++) {
+	for (i = 0; i < nthreads; i++) {
 		void *h;
 		pthread_join(threads[i], &h);
 		hit |= (int) (intptr_t) h;
@@ -278,6 +280,8 @@ static int wait_all(void)
 	pthread_cond_destroy(&cond_add);
 	pthread_cond_destroy(&cond_write);
 	pthread_cond_destroy(&cond_result);
+
+	free(threads);
 
 	return hit;
 }
@@ -963,7 +967,8 @@ int cmd_grep(int argc, const char **argv, const char *prefix)
 		opt.regflags |= REG_ICASE;
 
 #ifndef NO_PTHREADS
-	if (online_cpus() == 1 || !grep_threads_ok(&opt))
+	nthreads = online_cpus();
+	if (nthreads == 1 || !grep_threads_ok(&opt))
 		use_threads = 0;
 
 	if (use_threads) {
