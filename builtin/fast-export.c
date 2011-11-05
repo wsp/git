@@ -18,6 +18,8 @@
 #include "parse-options.h"
 #include "quote.h"
 
+#define REF_HANDLED (ALL_REV_FLAGS + 1)
+
 static const char *fast_export_usage[] = {
 	"git fast-export [rev-list-opts]",
 	NULL
@@ -541,9 +543,33 @@ static void handle_reset(const char *name, struct object *object)
 		       sha1_to_hex(object->sha1));
 }
 
-static void handle_tags_and_duplicates(struct string_list *extra_refs)
+static void handle_tags_and_duplicates(struct rev_info *revs, struct string_list *extra_refs)
 {
 	int i;
+
+	/* even if no commits were exported, we need to export the ref */
+	for (i = 0; i < revs->cmdline.nr; i++) {
+		struct rev_cmdline_entry *elem = &revs->cmdline.rev[i];
+		char *full_name;
+
+		if (elem->flags & UNINTERESTING)
+			continue;
+
+		if (elem->whence != REV_CMD_REV && elem->whence != REV_CMD_RIGHT)
+			continue;
+
+		dwim_ref(elem->name, strlen(elem->name), elem->item->sha1, &full_name);
+
+		if (!prefixcmp(full_name, "refs/tags/") &&
+			(tag_of_filtered_mode != REWRITE ||
+			!get_object_mark(elem->item)))
+			continue;
+
+		if (!(elem->flags & REF_HANDLED)) {
+			handle_reset(full_name, elem->item);
+			elem->flags |= REF_HANDLED;
+		}
+	}
 
 	for (i = extra_refs->nr - 1; i >= 0; i--) {
 		const char *name = extra_refs->items[i].string;
@@ -698,11 +724,12 @@ int cmd_fast_export(int argc, const char **argv, const char *prefix)
 		}
 		else {
 			handle_commit(commit, &revs);
+			commit->object.flags |= REF_HANDLED;
 			handle_tail(&commits, &revs);
 		}
 	}
 
-	handle_tags_and_duplicates(&extra_refs);
+	handle_tags_and_duplicates(&revs, &extra_refs);
 
 	if (export_filename)
 		export_marks(export_filename);
