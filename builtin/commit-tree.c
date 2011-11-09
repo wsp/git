@@ -9,7 +9,7 @@
 #include "builtin.h"
 #include "utf8.h"
 
-static const char commit_tree_usage[] = "git commit-tree [(-p <sha1>)...] [-m <message>] [-F <file>] [-x <extra>] <sha1> <changelog";
+static const char commit_tree_usage[] = "git commit-tree [(-p <sha1>)...] [-m <message>] [-F <file>] [-x <extra>] [-C <extra-commit>] <sha1> <changelog";
 
 static void new_parent(struct commit *parent, struct commit_list **parents_p)
 {
@@ -92,6 +92,28 @@ int cmd_commit_tree(int argc, const char **argv, const char *prefix)
 			if (argc <= ++i)
 				usage(commit_tree_usage);
 			x = read_commit_extra_header_lines(argv[i], strlen(argv[i]));
+			if (x) {
+				*extra_tail = x;
+				while (x->next)
+					x = x->next;
+				extra_tail = &x->next;
+			}
+			continue;
+		}
+
+		if (!strcmp(arg, "-C")) {
+			struct commit_extra_header *x;
+			unsigned char sha1[20];
+			struct commit *template;
+
+			if (argc <= ++i)
+				usage(commit_tree_usage);
+			if (get_sha1(argv[i], sha1))
+				die("Not a valid object name %s", argv[i]);
+			template = lookup_commit_reference(sha1);
+			if (!template || parse_commit(template))
+				die("Could not parse commit %s", argv[i]);
+			x = read_commit_extra_headers(template);
 			if (x) {
 				*extra_tail = x;
 				while (x->next)
