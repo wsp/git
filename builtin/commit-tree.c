@@ -9,7 +9,7 @@
 #include "builtin.h"
 #include "utf8.h"
 
-static const char commit_tree_usage[] = "git commit-tree [(-p <sha1>)...] [-m <message>] [-F <file>] <sha1> <changelog";
+static const char commit_tree_usage[] = "git commit-tree [(-p <sha1>)...] [-m <message>] [-F <file>] [-x <extra>] <sha1> <changelog";
 
 static void new_parent(struct commit *parent, struct commit_list **parents_p)
 {
@@ -32,6 +32,7 @@ int cmd_commit_tree(int argc, const char **argv, const char *prefix)
 	unsigned char tree_sha1[20];
 	unsigned char commit_sha1[20];
 	struct strbuf buffer = STRBUF_INIT;
+	struct commit_extra_header *extra = NULL, **extra_tail = &extra;
 
 	git_config(git_default_config, NULL);
 
@@ -86,6 +87,20 @@ int cmd_commit_tree(int argc, const char **argv, const char *prefix)
 			continue;
 		}
 
+		if (!strcmp(arg, "-x")) {
+			struct commit_extra_header *x;
+			if (argc <= ++i)
+				usage(commit_tree_usage);
+			x = read_commit_extra_header_lines(argv[i], strlen(argv[i]));
+			if (x) {
+				*extra_tail = x;
+				while (x->next)
+					x = x->next;
+				extra_tail = &x->next;
+			}
+			continue;
+		}
+
 		if (get_sha1(arg, tree_sha1))
 			die("Not a valid object name %s", arg);
 		if (got_tree)
@@ -98,7 +113,8 @@ int cmd_commit_tree(int argc, const char **argv, const char *prefix)
 			die_errno("git commit-tree: failed to read");
 	}
 
-	if (commit_tree(buffer.buf, tree_sha1, parents, commit_sha1, NULL)) {
+	if (commit_tree_extended(buffer.buf, tree_sha1, parents, commit_sha1,
+				 NULL, extra)) {
 		strbuf_release(&buffer);
 		return 1;
 	}

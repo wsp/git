@@ -10,7 +10,8 @@ SYNOPSIS
 --------
 [verse]
 'git commit-tree' <tree> [(-p <parent>)...] < changelog
-'git commit-tree' [(-p <parent>)...] [(-m <message>)...] [(-F <file>)...] <tree>
+'git commit-tree' [(-p <parent>)...] [(-m <message>)...] [(-F <file>)...]
+    [(-x <extra>)...]<tree>
 
 DESCRIPTION
 -----------
@@ -51,6 +52,11 @@ OPTIONS
 -F <file>::
 	Read the commit log message from the given file. Use `-` to read
 	from the standard input.
+
+-x <extra>::
+	Store extra header data in the resulting commit. This is for
+	internal use by git Porcelain scripts, and not meant for storing
+	random garbage in the commit by user programs.
 
 
 Commit Information
