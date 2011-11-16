@@ -2678,20 +2678,28 @@ static int index_stream(unsigned char *sha1, int fd, size_t size,
 			unsigned flags)
 {
 	struct child_process fast_import;
-	char export_marks[512];
-	const char *argv[] = { "fast-import", "--quiet", export_marks, NULL };
-	char tmpfile[512];
+	const char *argv[4];	/* command, two args, NULL */
+	const char **arg;
+	struct strbuf export_marks = STRBUF_INIT;
+	char *tmpfile;
 	char fast_import_cmd[512];
 	char buf[512];
 	int len, tmpfd;
 
-	strcpy(tmpfile, git_path("hashstream_XXXXXX"));
+	strbuf_addstr(&export_marks, "--export-marks=");
+	strbuf_addstr(&export_marks, git_path("hashstream_XXXXXX"));
+	tmpfile = export_marks.buf + strlen("--export-marks=");
 	tmpfd = git_mkstemp_mode(tmpfile, 0600);
 	if (tmpfd < 0)
 		die_errno("cannot create tempfile: %s", tmpfile);
 	if (close(tmpfd))
 		die_errno("cannot close tempfile: %s", tmpfile);
-	sprintf(export_marks, "--export-marks=%s", tmpfile);
+
+	arg = argv;
+	*arg++ = "fast-import";
+	*arg++ = "--quiet";
+	*arg++ = export_marks.buf;
+	*arg++ = NULL;
 
 	memset(&fast_import, 0, sizeof(fast_import));
 	fast_import.in = -1;
@@ -2735,6 +2743,8 @@ static int index_stream(unsigned char *sha1, int fd, size_t size,
 	    memcmp(":1 ", buf, 3) ||
 	    get_sha1_hex(buf + 3, sha1))
 		die_errno("index-stream: unexpected fast-import mark: <%s>", buf);
+
+	strbuf_release(&export_marks);
 	return 0;
 }
 
