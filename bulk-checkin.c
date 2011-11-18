@@ -52,6 +52,17 @@ static void finish_bulk_checkin(struct bulk_checkin_state *state)
 	reprepare_packed_git();
 }
 
+static int already_written(struct bulk_checkin_state *state, unsigned char sha1[])
+{
+	int i;
+
+	/* Might want to keep the list sorted */
+	for (i = 0; i < state->nr_written; i++)
+		if (!hashcmp(state->written[i]->sha1, sha1))
+			return 1;
+	return 0;
+}
+
 static void deflate_to_pack(struct bulk_checkin_state *state,
 			    unsigned char sha1[],
 			    int fd, size_t size, enum object_type type,
@@ -64,6 +75,7 @@ static void deflate_to_pack(struct bulk_checkin_state *state,
 	int write_object = (flags & HASH_WRITE_OBJECT);
 	int status = Z_OK;
 	struct pack_idx_entry *idx = NULL;
+	struct sha1file_checkpoint checkpoint;
 
 	hdrlen = sprintf((char *)obuf, "%s %" PRIuMAX,
 			 typename(type), (uintmax_t)size) + 1;
@@ -73,6 +85,7 @@ static void deflate_to_pack(struct bulk_checkin_state *state,
 	if (write_object) {
 		idx = xcalloc(1, sizeof(*idx));
 		idx->offset = state->offset;
+		sha1file_checkpoint(state->f, &checkpoint);
 		crc32_begin(state->f);
 	}
 	memset(&s, 0, sizeof(s));
@@ -121,10 +134,17 @@ static void deflate_to_pack(struct bulk_checkin_state *state,
 	git_SHA1_Final(sha1, &ctx);
 	if (write_object) {
 		idx->crc32 = crc32_end(state->f);
-		hashcpy(idx->sha1, sha1);
-		ALLOC_GROW(state->written,
-			   state->nr_written + 1, state->alloc_written);
-		state->written[state->nr_written++] = idx;
+
+		if (already_written(state, sha1)) {
+			sha1file_truncate(state->f, &checkpoint);
+			state->offset = checkpoint.offset;
+			free(idx);
+		} else {
+			hashcpy(idx->sha1, sha1);
+			ALLOC_GROW(state->written,
+				   state->nr_written + 1, state->alloc_written);
+			state->written[state->nr_written++] = idx;
+		}
 	}
 }
 
