@@ -9,6 +9,7 @@ test_expect_success setup '
 	git config core.bigfilethreshold 200k &&
 	echo X | dd of=large1 bs=1k seek=2000 &&
 	echo X | dd of=large2 bs=1k seek=2000 &&
+	echo X | dd of=large3 bs=1k seek=2000 &&
 	echo Y | dd of=huge bs=1k seek=2500
 '
 
@@ -34,7 +35,22 @@ test_expect_success 'add a large file or two' '
 		test -f "$l" || continue
 		bad=t
 	done &&
-	test -z "$bad"
+	test -z "$bad" &&
+
+	# attempt to add another copy of the same
+	git add large3 &&
+	bad= count=0 &&
+	for p in .git/objects/pack/pack-*.pack
+	do
+		count=$(( $count + 1 ))
+		if test -f "$p" && idx=${p%.pack}.idx && test -f "$idx"
+		then
+			continue
+		fi
+		bad=t
+	done &&
+	test -z "$bad" &&
+	test $count = 1
 '
 
 test_expect_success 'checkout a large file' '

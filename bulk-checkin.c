@@ -29,7 +29,11 @@ static void finish_bulk_checkin(struct bulk_checkin_state *state)
 	if (!state->f)
 		return;
 
-	if (state->nr_written == 1) {
+	if (state->nr_written == 0) {
+		close(state->f->fd);
+		unlink(state->pack_tmp_name);
+		goto clear_exit;
+	} else if (state->nr_written == 1) {
 		sha1close(state->f, sha1, CSUM_FSYNC);
 	} else {
 		int fd = sha1close(state->f, sha1, 0);
@@ -45,6 +49,8 @@ static void finish_bulk_checkin(struct bulk_checkin_state *state)
 			    &state->pack_idx_opts, sha1);
 	for (i = 0; i < state->nr_written; i++)
 		free(state->written[i]);
+
+clear_exit:
 	free(state->written);
 	memset(state, 0, sizeof(*state));
 
@@ -55,6 +61,10 @@ static void finish_bulk_checkin(struct bulk_checkin_state *state)
 static int already_written(struct bulk_checkin_state *state, unsigned char sha1[])
 {
 	int i;
+
+	/* The object may already exist in the repository */
+	if (has_sha1_file(sha1))
+		return 1;
 
 	/* Might want to keep the list sorted */
 	for (i = 0; i < state->nr_written; i++)
