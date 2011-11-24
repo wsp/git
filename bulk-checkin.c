@@ -73,10 +73,13 @@ static int already_written(struct bulk_checkin_state *state, unsigned char sha1[
 	return 0;
 }
 
-static void deflate_to_pack(struct bulk_checkin_state *state,
-			    unsigned char sha1[],
-			    int fd, size_t size, enum object_type type,
-			    const char *path, unsigned flags)
+#define DEFLATE_TO_PACK_OK 0
+#define DEFLATE_TO_PACK_TOOBIG 1
+
+static int deflate_to_pack(struct bulk_checkin_state *state,
+			   unsigned char sha1[],
+			   int fd, size_t size, enum object_type type,
+			   const char *path, unsigned flags)
 {
 	unsigned char obuf[16384];
 	unsigned hdrlen;
@@ -149,6 +152,13 @@ static void deflate_to_pack(struct bulk_checkin_state *state,
 			sha1file_truncate(state->f, &checkpoint);
 			state->offset = checkpoint.offset;
 			free(idx);
+		} else if (state->nr_written &&
+			   pack_size_limit_cfg &&
+			   pack_size_limit_cfg < state->offset) {
+			sha1file_truncate(state->f, &checkpoint);
+			state->offset = checkpoint.offset;
+			free(idx);
+			return DEFLATE_TO_PACK_TOOBIG;
 		} else {
 			hashcpy(idx->sha1, sha1);
 			ALLOC_GROW(state->written,
@@ -156,12 +166,17 @@ static void deflate_to_pack(struct bulk_checkin_state *state,
 			state->written[state->nr_written++] = idx;
 		}
 	}
+	return DEFLATE_TO_PACK_OK;
 }
 
 int index_bulk_checkin(unsigned char *sha1,
 		       int fd, size_t size, enum object_type type,
 		       const char *path, unsigned flags)
 {
+	off_t seekback;
+	int status;
+
+again:
 	if (!state.f && (flags & HASH_WRITE_OBJECT)) {
 		state.f = create_tmp_packfile(&state.pack_tmp_name);
 		reset_pack_idx_option(&state.pack_idx_opts);
@@ -171,7 +186,17 @@ int index_bulk_checkin(unsigned char *sha1,
 			die_errno("unable to write pack header");
 	}
 
-	deflate_to_pack(&state, sha1, fd, size, type, path, flags);
+	seekback = lseek(fd, 0, SEEK_CUR);
+	if (seekback == (off_t) -1)
+		return error("cannot seek");
+	status = deflate_to_pack(&state, sha1, fd, size, type, path, flags);
+	if (status == DEFLATE_TO_PACK_TOOBIG) {
+		finish_bulk_checkin(&state);
+		if (lseek(fd, seekback, SEEK_SET) == (off_t) -1)
+			return error("cannot seek back");
+		goto again;
+	}
+
 	if (!state.plugged)
 		finish_bulk_checkin(&state);
 	return 0;
