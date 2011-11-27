@@ -2,6 +2,7 @@
 #include "run-command.h"
 #include "strbuf.h"
 #include "prompt.h"
+#include "compat/getpass.h"
 
 static char *do_askpass(const char *cmd, const char *prompt, const char *name)
 {
@@ -48,7 +49,9 @@ char *git_prompt(const char *prompt, const char *name, int flags)
 			return do_askpass(askpass, prompt, name);
 	}
 
-	return getpass(prompt);
+	return flags & PROMPT_ECHO ?
+		getpass_echo(prompt) :
+		getpass(prompt);
 }
 
 char *git_getpass(const char *prompt)
