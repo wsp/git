@@ -2331,6 +2331,7 @@ int cmd_pack_objects(int argc, const char **argv, const char *prefix)
 	int use_internal_rev_list = 0;
 	int thin = 0;
 	int all_progress_implied = 0;
+	int count_only = 0;
 	uint32_t i;
 	const char **rp_av;
 	int rp_ac_alloc = 64;
@@ -2502,6 +2503,10 @@ int cmd_pack_objects(int argc, const char **argv, const char *prefix)
 			grafts_replace_parents = 0;
 			continue;
 		}
+		if (!strcmp("--count-only", arg)) {
+			count_only = 1;
+			continue;
+		}
 		usage(pack_usage);
 	}
 
@@ -2558,6 +2563,8 @@ int cmd_pack_objects(int argc, const char **argv, const char *prefix)
 	stop_progress(&progress_state);
 
 	if (non_empty && !nr_result)
+		return 0;
+	if (count_only)
 		return 0;
 	if (nr_result)
 		prepare_pack(window, depth);
