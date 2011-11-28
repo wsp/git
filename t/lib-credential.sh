@@ -203,6 +203,7 @@ helper_test() {
 		password=askpass-password
 		--
 		askpass: Password for '\''https://user1@example.com'\'':
+		EOF
 	'
 
 	test_expect_success "helper ($HELPER) remembers other user" '
