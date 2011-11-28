@@ -10,7 +10,7 @@
 #include "utf8.h"
 #include "gpg-interface.h"
 
-static const char commit_tree_usage[] = "git commit-tree [(-p <sha1>)...] [-S<signer>] [-m <message>] [-F <file>] <sha1> <changelog";
+static const char commit_tree_usage[] = "git commit-tree [(-p <sha1>)...] [-S<signer>] [-m <message>] [-F <file>] [-x <extra>] [-C <extra-commit>] <sha1> <changelog";
 
 static void new_parent(struct commit *parent, struct commit_list **parents_p)
 {
@@ -42,6 +42,7 @@ int cmd_commit_tree(int argc, const char **argv, const char *prefix)
 	unsigned char commit_sha1[20];
 	struct strbuf buffer = STRBUF_INIT;
 	const char *sign_commit = NULL;
+	struct commit_extra_header *extra = NULL, **extra_tail = &extra;
 
 	git_config(commit_tree_config, NULL);
 
@@ -104,6 +105,42 @@ int cmd_commit_tree(int argc, const char **argv, const char *prefix)
 			continue;
 		}
 
+		if (!strcmp(arg, "-x")) {
+			struct commit_extra_header *x;
+			if (argc <= ++i)
+				usage(commit_tree_usage);
+			x = read_commit_extra_header_lines(argv[i], strlen(argv[i]));
+			if (x) {
+				*extra_tail = x;
+				while (x->next)
+					x = x->next;
+				extra_tail = &x->next;
+			}
+			continue;
+		}
+
+		if (!strcmp(arg, "-C")) {
+			struct commit_extra_header *x;
+			unsigned char sha1[20];
+			struct commit *template;
+
+			if (argc <= ++i)
+				usage(commit_tree_usage);
+			if (get_sha1(argv[i], sha1))
+				die("Not a valid object name %s", argv[i]);
+			template = lookup_commit_reference(sha1);
+			if (!template || parse_commit(template))
+				die("Could not parse commit %s", argv[i]);
+			x = read_commit_extra_headers(template);
+			if (x) {
+				*extra_tail = x;
+				while (x->next)
+					x = x->next;
+				extra_tail = &x->next;
+			}
+			continue;
+		}
+
 		if (get_sha1(arg, tree_sha1))
 			die("Not a valid object name %s", arg);
 		if (got_tree)
@@ -116,8 +153,8 @@ int cmd_commit_tree(int argc, const char **argv, const char *prefix)
 			die_errno("git commit-tree: failed to read");
 	}
 
-	if (commit_tree(buffer.buf, tree_sha1, parents, commit_sha1,
-			NULL, sign_commit)) {
+	if (commit_tree_extended(buffer.buf, tree_sha1, parents, commit_sha1,
+				 NULL, sign_commit, extra)) {
 		strbuf_release(&buffer);
 		return 1;
 	}
