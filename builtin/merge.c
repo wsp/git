@@ -50,6 +50,7 @@ static int show_diffstat = 1, shortlog_len = -1, squash;
 static int option_commit = 1, allow_fast_forward = 1;
 static int fast_forward_only, option_edit;
 static int allow_trivial = 1, have_message;
+static int overwrite_ignore = 1;
 static struct strbuf merge_msg;
 static struct commit_list *remoteheads;
 static struct strategy **use_strategies;
@@ -212,6 +213,7 @@ static struct option builtin_merge_options[] = {
 	OPT_SET_INT(0, "progress", &show_progress, "force progress reporting", 1),
 	{ OPTION_STRING, 'S', "gpg-sign", &sign_commit, "key id",
 	  "GPG sign commit", PARSE_OPT_OPTARG, NULL, (intptr_t) "" },
+	OPT_BOOLEAN(0, "overwrite-ignore", &overwrite_ignore, "update ignored files (default)"),
 	OPT_END()
 };
 
@@ -774,10 +776,12 @@ int checkout_fast_forward(const unsigned char *head, const unsigned char *remote
 	memset(&trees, 0, sizeof(trees));
 	memset(&opts, 0, sizeof(opts));
 	memset(&t, 0, sizeof(t));
-	memset(&dir, 0, sizeof(dir));
-	dir.flags |= DIR_SHOW_IGNORED;
-	dir.exclude_per_dir = ".gitignore";
-	opts.dir = &dir;
+	if (overwrite_ignore) {
+		memset(&dir, 0, sizeof(dir));
+		dir.flags |= DIR_SHOW_IGNORED;
+		setup_standard_excludes(&dir);
+		opts.dir = &dir;
+	}
 
 	opts.head_idx = 1;
 	opts.src_index = &the_index;
