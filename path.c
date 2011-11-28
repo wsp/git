@@ -288,6 +288,7 @@ const char *enter_repo(const char *path, int strict)
 	static char used_path[PATH_MAX];
 	static char validated_path[PATH_MAX];
 
+	errno = 0;
 	if (!path)
 		return NULL;
 
@@ -300,16 +301,19 @@ const char *enter_repo(const char *path, int strict)
 		int i;
 		while ((1 < len) && (path[len-1] == '/'))
 			len--;
-
-		if (PATH_MAX <= len)
+		if (PATH_MAX <= len) {
+			errno = ENAMETOOLONG;
 			return NULL;
+		}
+
 		strncpy(used_path, path, len); used_path[len] = 0 ;
 		strcpy(validated_path, used_path);
 
-		if (used_path[0] == '~') {
-			char *newpath = expand_user_path(used_path);
+		if (path[0] == '~') {
+			char *newpath = expand_user_path(path);
 			if (!newpath || (PATH_MAX - 10 < strlen(newpath))) {
 				free(newpath);
+				errno = 0;
 				return NULL;
 			}
 			/*
@@ -319,15 +323,17 @@ const char *enter_repo(const char *path, int strict)
 			 * anyway.
 			 */
 			strcpy(used_path, newpath); free(newpath);
-		}
-		else if (PATH_MAX - 10 < len)
+		} else if (PATH_MAX - 10 < len) {
+			errno = ENAMETOOLONG;
 			return NULL;
-		len = strlen(used_path);
+		}
 		for (i = 0; suffix[i]; i++) {
 			strcpy(used_path + len, suffix[i]);
 			if (!access(used_path, F_OK)) {
 				strcat(validated_path, suffix[i]);
 				break;
+			} else if (errno == EACCES) {
+				return NULL;
 			}
 		}
 		if (!suffix[i])
@@ -342,14 +348,16 @@ const char *enter_repo(const char *path, int strict)
 	else if (chdir(path))
 		return NULL;
 
-	if (access("objects", X_OK) == 0 && access("refs", X_OK) == 0 &&
-	    validate_headref("HEAD") == 0) {
-		set_git_dir(".");
-		check_repository_format();
-		return path;
+	if (access("objects", X_OK) || access("refs", X_OK))
+		return NULL;
+	if (validate_headref("HEAD")) {
+		errno = 0;
+		return NULL;
 	}
 
-	return NULL;
+	set_git_dir(".");
+	check_repository_format();
+	return path;
 }
 
 int set_shared_perm(const char *path, int mode)

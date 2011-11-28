@@ -120,12 +120,14 @@ static const char *path_ok(char *directory)
 
 	if (daemon_avoid_alias(dir)) {
 		logerror("'%s': aliased", dir);
+		errno = 0;
 		return NULL;
 	}
 
 	if (*dir == '~') {
 		if (!user_path) {
 			logerror("'%s': User-path not allowed", dir);
+			errno = EACCES;
 			return NULL;
 		}
 		if (*user_path) {
@@ -158,6 +160,7 @@ static const char *path_ok(char *directory)
 		if (*dir != '/') {
 			/* Allow only absolute */
 			logerror("'%s': Non-absolute path denied (interpolated-path active)", dir);
+			errno = EACCES;
 			return NULL;
 		}
 
@@ -173,6 +176,7 @@ static const char *path_ok(char *directory)
 		if (*dir != '/') {
 			/* Allow only absolute */
 			logerror("'%s': Non-absolute path denied (base-path active)", dir);
+			errno = EACCES;
 			return NULL;
 		}
 		snprintf(rpath, PATH_MAX, "%s%s", base_path, dir);
@@ -190,7 +194,9 @@ static const char *path_ok(char *directory)
 	}
 
 	if (!path) {
+		int err = errno;
 		logerror("'%s' does not appear to be a git repository", dir);
+		errno = err;
 		return NULL;
 	}
 
@@ -221,6 +227,7 @@ static const char *path_ok(char *directory)
 	}
 
 	logerror("'%s': not in whitelist", path);
+	errno = EACCES;
 	return NULL;		/* Fallthrough. Deny by default */
 }
 
@@ -269,8 +276,12 @@ static int run_service(char *dir, struct daemon_service *service)
 		return daemon_error(dir, "service not enabled");
 	}
 
-	if (!(path = path_ok(dir)))
-		return daemon_error(dir, "no such repository");
+	if (!(path = path_ok(dir))) {
+		if (errno == EACCES)
+			return daemon_error(dir, "permission denied");
+		else
+			return daemon_error(dir, "no such repository");
+	}
 
 	/*
 	 * Security on the cheap.
