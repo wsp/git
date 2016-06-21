@@ -57,7 +57,7 @@ OPTIONS
 -n::
 --dry-run::
 	Check if the command would error out, without updating the index
-	nor the files in the working tree for real.
+	or the files in the working tree for real.
 
 -v::
 	Show the progress of checking files out.
@@ -83,11 +83,10 @@ OPTIONS
 
 --prefix=<prefix>/::
 	Keep the current index contents, and read the contents
-	of the named tree-ish under the directory at `<prefix>`. The
-	original index file cannot have anything at the path
-	`<prefix>` itself, nor anything in the `<prefix>/`
-	directory.  Note that the `<prefix>/` value must end
-	with a slash.
+	of the named tree-ish under the directory at `<prefix>`.
+	The command will refuse to overwrite entries that already
+	existed in the original index file. Note that the `<prefix>/`
+	value must end with a slash.
 
 --exclude-per-directory=<gitignore>::
 	When running the command with `-u` and `-m` options, the
@@ -284,7 +283,7 @@ merge. The different stages represent the "result tree" (stage 0, aka
 you are trying to merge (stage 2 and 3 respectively).
 
 The order of stages 1, 2 and 3 (hence the order of three
-<tree-ish> command line arguments) are significant when you
+<tree-ish> command-line arguments) are significant when you
 start a 3-way merge with an index file that is already
 populated.  Here is an outline of how the algorithm works:
 
@@ -342,7 +341,7 @@ since you pulled from him:
 
 ----------------
 $ git fetch git://.... linus
-$ LT=`cat .git/FETCH_HEAD`
+$ LT=`git rev-parse FETCH_HEAD`
 ----------------
 
 Your work tree is still based on your HEAD ($JC), but you have
