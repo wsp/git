@@ -26,13 +26,17 @@ OPTIONS
 -------
 
 --strict::
-	Do not try <directory>/.git/ if <directory> is no git directory.
+	Do not try <directory>/.git/ if <directory> is no Git directory.
 
 --timeout=<n>::
 	Interrupt transfer after <n> seconds of inactivity.
 
 <directory>::
 	The repository to sync from.
+
+SEE ALSO
+--------
+linkgit:gitnamespaces[7]
 
 GIT
 ---
