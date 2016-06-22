@@ -23,8 +23,8 @@ static int verify_object(const unsigned char *sha1, const char *expected_type)
 	int ret = -1;
 	enum object_type type;
 	unsigned long size;
-	const unsigned char *repl;
-	void *buffer = read_sha1_file_repl(sha1, &type, &size, &repl);
+	void *buffer = read_sha1_file(sha1, &type, &size);
+	const unsigned char *repl = lookup_replace_object(sha1);
 
 	if (buffer) {
 		if (type == type_from_string(expected_type))
@@ -154,7 +154,7 @@ int cmd_mktag(int argc, const char **argv, const char *prefix)
 	unsigned char result_sha1[20];
 
 	if (argc != 1)
-		usage("git mktag < signaturefile");
+		usage("git mktag");
 
 	if (strbuf_read(&buf, 0, 4096) < 0) {
 		die_errno("could not read from stdin");
