@@ -1,4 +1,5 @@
 #include "cache.h"
+#include "thread-utils.h"
 
 #if defined(hpux) || defined(__hpux) || defined(_hpux)
 #  include <sys/pstat.h>
@@ -23,7 +24,7 @@ int online_cpus(void)
 	long ncpus;
 #endif
 
-#ifdef _WIN32
+#ifdef GIT_WINDOWS_NATIVE
 	SYSTEM_INFO info;
 	GetSystemInfo(&info);
 
@@ -34,7 +35,23 @@ int online_cpus(void)
 
 	if (!pstat_getdynamic(&psd, sizeof(psd), (size_t)1, 0))
 		return (int)psd.psd_proc_cnt;
-#endif
+#elif defined(HAVE_BSD_SYSCTL) && defined(HW_NCPU)
+	int mib[2];
+	size_t len;
+	int cpucount;
+
+	mib[0] = CTL_HW;
+#  ifdef HW_AVAILCPU
+	mib[1] = HW_AVAILCPU;
+	len = sizeof(cpucount);
+	if (!sysctl(mib, 2, &cpucount, &len, NULL, 0))
+		return cpucount;
+#  endif /* HW_AVAILCPU */
+	mib[1] = HW_NCPU;
+	len = sizeof(cpucount);
+	if (!sysctl(mib, 2, &cpucount, &len, NULL, 0))
+		return cpucount;
+#endif /* defined(HAVE_BSD_SYSCTL) && defined(HW_NCPU) */
 
 #ifdef _SC_NPROCESSORS_ONLN
 	if ((ncpus = (long)sysconf(_SC_NPROCESSORS_ONLN)) > 0)
@@ -42,4 +59,19 @@ int online_cpus(void)
 #endif
 
 	return 1;
+}
+
+int init_recursive_mutex(pthread_mutex_t *m)
+{
+	pthread_mutexattr_t a;
+	int ret;
+
+	ret = pthread_mutexattr_init(&a);
+	if (!ret) {
+		ret = pthread_mutexattr_settype(&a, PTHREAD_MUTEX_RECURSIVE);
+		if (!ret)
+			ret = pthread_mutex_init(m, &a);
+		pthread_mutexattr_destroy(&a);
+	}
+	return ret;
 }
