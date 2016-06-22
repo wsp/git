@@ -84,7 +84,7 @@ Updates since v1.7.6
    logic used by "git diff" to determine the hunk header.
 
  * Invoking the low-level "git http-fetch" without "-a" option (which
-   git itself never did---normal users should not have to worry about
+   git itself never did--normal users should not have to worry about
    this) is now deprecated.
 
  * The "--decorate" option to "git log" and its family learned to
@@ -132,12 +132,3 @@ included in this release.
 
  * "git branch -m" and "git checkout -b" incorrectly allowed the tip
    of the branch that is currently checked out updated.
-   (merge 55c4a67 ci/forbid-unwanted-current-branch-update later to 'maint').
-
---
-exec >/var/tmp/1
-echo O=$(git describe master)
-O=v1.7.7-rc3
-git log --first-parent --oneline $O..master
-echo
-git shortlog --no-merges ^maint ^$O master
