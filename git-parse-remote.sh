@@ -1,4 +1,6 @@
-#!/bin/sh
+# This is a shell library to calculate the remote repository and
+# upstream branch that should be pulled by "git pull" from the current
+# branch.
 
 # git-ls-remote could be called from outside a git managed repository;
 # this would fail in that case and would issue an error message.
@@ -49,4 +51,39 @@ get_remote_merge_branch () {
 		    ;;
 	    esac
 	esac
+}
+
+error_on_missing_default_upstream () {
+	cmd="$1"
+	op_type="$2"
+	op_prep="$3"
+	example="$4"
+	branch_name=$(git symbolic-ref -q HEAD)
+	# If there's only one remote, use that in the suggestion
+	remote="<remote>"
+	if test $(git remote | wc -l) = 1
+	then
+		remote=$(git remote)
+	fi
+
+	if test -z "$branch_name"
+	then
+		echo "You are not currently on a branch. Please specify which
+branch you want to $op_type $op_prep. See git-${cmd}(1) for details.
+
+    $example
+"
+	else
+		echo "There is no tracking information for the current branch.
+Please specify which branch you want to $op_type $op_prep.
+See git-${cmd}(1) for details
+
+    $example
+
+If you wish to set tracking information for this branch you can do so with:
+
+    git branch --set-upstream-to=$remote/<branch> ${branch_name#refs/heads/}
+"
+	fi
+	exit 1
 }
