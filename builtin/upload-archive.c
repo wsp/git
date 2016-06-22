@@ -7,6 +7,7 @@
 #include "pkt-line.h"
 #include "sideband.h"
 #include "run-command.h"
+#include "argv-array.h"
 
 static const char upload_archive_usage[] =
 	"git upload-archive <repo>";
@@ -14,58 +15,48 @@ static const char upload_archive_usage[] =
 static const char deadchild[] =
 "git upload-archive: archiver died with error";
 
-static const char lostchild[] =
-"git upload-archive: archiver process was lost";
-
 #define MAX_ARGS (64)
 
-static void prepare_argv(const char **sent_argv, const char **argv)
+int cmd_upload_archive_writer(int argc, const char **argv, const char *prefix)
 {
+	struct argv_array sent_argv = ARGV_ARRAY_INIT;
 	const char *arg_cmd = "argument ";
-	char *p, buf[4096];
-	int sent_argc;
-	int len;
+
+	if (argc != 2)
+		usage(upload_archive_usage);
+
+	if (!enter_repo(argv[1], 0))
+		die("'%s' does not appear to be a git repository", argv[1]);
 
 	/* put received options in sent_argv[] */
-	sent_argc = 2;
-	sent_argv[0] = "archive";
-	sent_argv[1] = "--remote-request";
-	for (p = buf;;) {
-		/* This will die if not enough free space in buf */
-		len = packet_read_line(0, p, (buf + sizeof buf) - p);
-		if (len == 0)
+	argv_array_push(&sent_argv, "git-upload-archive");
+	for (;;) {
+		char *buf = packet_read_line(0, NULL);
+		if (!buf)
 			break;	/* got a flush */
-		if (sent_argc > MAX_ARGS - 2)
-			die("Too many options (>%d)", MAX_ARGS - 2);
+		if (sent_argv.argc > MAX_ARGS)
+			die("Too many options (>%d)", MAX_ARGS - 1);
 
-		if (p[len-1] == '\n') {
-			p[--len] = 0;
-		}
-		if (len < strlen(arg_cmd) ||
-		    strncmp(arg_cmd, p, strlen(arg_cmd)))
+		if (!starts_with(buf, arg_cmd))
 			die("'argument' token or flush expected");
-
-		len -= strlen(arg_cmd);
-		memmove(p, p + strlen(arg_cmd), len);
-		sent_argv[sent_argc++] = p;
-		p += len;
-		*p++ = 0;
+		argv_array_push(&sent_argv, buf + strlen(arg_cmd));
 	}
-	sent_argv[sent_argc] = NULL;
+
+	/* parse all options sent by the client */
+	return write_archive(sent_argv.argc, sent_argv.argv, prefix, 0, NULL, 1);
 }
 
 __attribute__((format (printf, 1, 2)))
 static void error_clnt(const char *fmt, ...)
 {
-	char buf[1024];
+	struct strbuf buf = STRBUF_INIT;
 	va_list params;
-	int len;
 
 	va_start(params, fmt);
-	len = vsprintf(buf, fmt, params);
+	strbuf_vaddf(&buf, fmt, params);
 	va_end(params);
-	send_sideband(1, 3, buf, len, LARGE_PACKET_MAX);
-	die("sent error to the client: %s", buf);
+	send_sideband(1, 3, buf.buf, buf.len, LARGE_PACKET_MAX);
+	die("sent error to the client: %s", buf.buf);
 }
 
 static ssize_t process_input(int child_fd, int band)
@@ -83,35 +74,33 @@ static ssize_t process_input(int child_fd, int band)
 
 int cmd_upload_archive(int argc, const char **argv, const char *prefix)
 {
-	const char *sent_argv[MAX_ARGS];
-	struct child_process cld = { sent_argv };
-	cld.out = cld.err = -1;
-	cld.git_cmd = 1;
+	struct child_process writer = { argv };
 
-	if (argc != 2)
-		usage(upload_archive_usage);
-
-	if (!enter_repo(argv[1], 0))
-		die("'%s' does not appear to be a git repository", argv[1]);
-
-	prepare_argv(sent_argv, argv);
-	if (start_command(&cld)) {
+	/*
+	 * Set up sideband subprocess.
+	 *
+	 * We (parent) monitor and read from child, sending its fd#1 and fd#2
+	 * multiplexed out to our fd#1.  If the child dies, we tell the other
+	 * end over channel #3.
+	 */
+	argv[0] = "upload-archive--writer";
+	writer.out = writer.err = -1;
+	writer.git_cmd = 1;
+	if (start_command(&writer)) {
 		int err = errno;
-		packet_write(1, "NACK fork failed on the remote side\n");
+		packet_write(1, "NACK unable to spawn subprocess\n");
 		die("upload-archive: %s", strerror(err));
 	}
 
-	/* parent - read from child, multiplex and send out to fd#1 */
 	packet_write(1, "ACK\n");
 	packet_flush(1);
 
 	while (1) {
 		struct pollfd pfd[2];
-		int status;
 
-		pfd[0].fd = cld.out;
+		pfd[0].fd = writer.out;
 		pfd[0].events = POLLIN;
-		pfd[1].fd = cld.err;
+		pfd[1].fd = writer.err;
 		pfd[1].events = POLLIN;
 		if (poll(pfd, 2, -1) < 0) {
 			if (errno != EINTR) {
@@ -130,9 +119,7 @@ int cmd_upload_archive(int argc, const char **argv, const char *prefix)
 			if (process_input(pfd[0].fd, 1))
 				continue;
 
-		if (waitpid(cld.pid, &status, 0) < 0)
-			error_clnt("%s", lostchild);
-		else if (!WIFEXITED(status) || WEXITSTATUS(status) > 0)
+		if (finish_command(&writer))
 			error_clnt("%s", deadchild);
 		packet_flush(1);
 		break;
