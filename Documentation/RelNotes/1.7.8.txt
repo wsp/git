@@ -1,5 +1,5 @@
-Git v1.7.8 Release Notes (draft)
-================================
+Git v1.7.8 Release Notes
+========================
 
 Updates since v1.7.7
 --------------------
@@ -9,7 +9,7 @@ Updates since v1.7.7
  * Updates to bash completion scripts.
 
  * The build procedure has been taught to take advantage of computed
-   dependency automatically when the complier supports it.
+   dependency automatically when the compiler supports it.
 
  * The date parser now accepts timezone designators that lack minutes
    part and also has a colon between "hh:mm".
@@ -31,7 +31,7 @@ Updates since v1.7.7
  * Variants of "git cherry-pick" and "git revert" that take multiple
    commits learned to "--continue" and "--abort".
 
- * "git daemon" gives more human readble error messages to clients
+ * "git daemon" gives more human readable error messages to clients
    using ERR packets when appropriate.
 
  * Errors at the network layer is logged by "git daemon".
@@ -159,11 +159,3 @@ included in this release.
    were misspelled.
    (merge c49904e fc/remote-seturl-usage-fix later to maint).
    (merge 656cdf0 jc/remote-setbranches-usage-fix later to maint).
-
----
-exec >/var/tmp/1
-O=v1.7.8-rc3-16-g9e9ab40
-echo O=$(git describe --always master)
-git log --first-parent --oneline --reverse ^$O master
-echo
-git shortlog --no-merges ^$O master
