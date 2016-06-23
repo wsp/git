@@ -3,11 +3,12 @@ git-init-db(1)
 
 NAME
 ----
-git-init-db - Creates an empty git repository
+git-init-db - Creates an empty Git repository
 
 
 SYNOPSIS
 --------
+[verse]
 'git init-db' [-q | --quiet] [--bare] [--template=<template_directory>] [--separate-git-dir <git dir>] [--shared[=<permissions>]]
 
 
