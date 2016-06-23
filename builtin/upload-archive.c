@@ -7,6 +7,7 @@
 #include "pkt-line.h"
 #include "sideband.h"
 #include "run-command.h"
+#include "argv-array.h"
 
 static const char upload_archive_usage[] =
 	"git upload-archive <repo>";
@@ -18,65 +19,44 @@ static const char deadchild[] =
 
 int cmd_upload_archive_writer(int argc, const char **argv, const char *prefix)
 {
-	const char *sent_argv[MAX_ARGS];
+	struct argv_array sent_argv = ARGV_ARRAY_INIT;
 	const char *arg_cmd = "argument ";
-	char *p, buf[4096];
-	int sent_argc;
-	int len;
 
 	if (argc != 2)
 		usage(upload_archive_usage);
 
-	if (strlen(argv[1]) + 1 > sizeof(buf))
-		die("insanely long repository name");
-
-	strcpy(buf, argv[1]); /* enter-repo smudges its argument */
-
-	if (!enter_repo(buf, 0))
-		die("'%s' does not appear to be a git repository", buf);
+	if (!enter_repo(argv[1], 0))
+		die("'%s' does not appear to be a git repository", argv[1]);
 
 	/* put received options in sent_argv[] */
-	sent_argc = 1;
-	sent_argv[0] = "git-upload-archive";
-	for (p = buf;;) {
-		/* This will die if not enough free space in buf */
-		len = packet_read_line(0, p, (buf + sizeof buf) - p);
-		if (len == 0)
+	argv_array_push(&sent_argv, "git-upload-archive");
+	for (;;) {
+		char *buf = packet_read_line(0, NULL);
+		if (!buf)
 			break;	/* got a flush */
-		if (sent_argc > MAX_ARGS - 2)
-			die("Too many options (>%d)", MAX_ARGS - 2);
+		if (sent_argv.argc > MAX_ARGS)
+			die("Too many options (>%d)", MAX_ARGS - 1);
 
-		if (p[len-1] == '\n') {
-			p[--len] = 0;
-		}
-		if (len < strlen(arg_cmd) ||
-		    strncmp(arg_cmd, p, strlen(arg_cmd)))
+		if (!starts_with(buf, arg_cmd))
 			die("'argument' token or flush expected");
-
-		len -= strlen(arg_cmd);
-		memmove(p, p + strlen(arg_cmd), len);
-		sent_argv[sent_argc++] = p;
-		p += len;
-		*p++ = 0;
+		argv_array_push(&sent_argv, buf + strlen(arg_cmd));
 	}
-	sent_argv[sent_argc] = NULL;
 
 	/* parse all options sent by the client */
-	return write_archive(sent_argc, sent_argv, prefix, 0, NULL, 1);
+	return write_archive(sent_argv.argc, sent_argv.argv, prefix, 0, NULL, 1);
 }
 
 __attribute__((format (printf, 1, 2)))
 static void error_clnt(const char *fmt, ...)
 {
-	char buf[1024];
+	struct strbuf buf = STRBUF_INIT;
 	va_list params;
-	int len;
 
 	va_start(params, fmt);
-	len = vsprintf(buf, fmt, params);
+	strbuf_vaddf(&buf, fmt, params);
 	va_end(params);
-	send_sideband(1, 3, buf, len, LARGE_PACKET_MAX);
-	die("sent error to the client: %s", buf);
+	send_sideband(1, 3, buf.buf, buf.len, LARGE_PACKET_MAX);
+	die("sent error to the client: %s", buf.buf);
 }
 
 static ssize_t process_input(int child_fd, int band)
@@ -124,8 +104,7 @@ int cmd_upload_archive(int argc, const char **argv, const char *prefix)
 		pfd[1].events = POLLIN;
 		if (poll(pfd, 2, -1) < 0) {
 			if (errno != EINTR) {
-				error("poll failed resuming: %s",
-				      strerror(errno));
+				error_errno("poll failed resuming");
 				sleep(1);
 			}
 			continue;
