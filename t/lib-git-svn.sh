@@ -1,8 +1,5 @@
 . ./test-lib.sh
 
-remotes_git_svn=remotes/git""-svn
-git_svn_id=git""-svn-id
-
 if test -n "$NO_SVN_TESTS"
 then
 	skip_all='skipping git svn tests, NO_SVN_TESTS defined'
@@ -29,7 +26,7 @@ export svnrepo
 svnconf=$PWD/svnconf
 export svnconf
 
-"$PERL_PATH" -w -e "
+perl -w -e "
 use SVN::Core;
 use SVN::Repos;
 \$SVN::Core::VERSION gt '1.1.0' or exit(42);
@@ -68,8 +65,7 @@ svn_cmd () {
 	svn "$orig_svncmd" --config-dir "$svnconf" "$@"
 }
 
-if test -n "$SVN_HTTPD_PORT"
-then
+prepare_httpd () {
 	for d in \
 		"$SVN_HTTPD_PATH" \
 		/usr/sbin/apache2 \
@@ -83,8 +79,8 @@ then
 	done
 	if test -z "$SVN_HTTPD_PATH"
 	then
-		skip_all='skipping git svn tests, Apache not found'
-		test_done
+		echo >&2 '*** error: Apache not found'
+		return 1
 	fi
 	for d in \
 		"$SVN_HTTPD_MODULE_PATH" \
@@ -99,23 +95,16 @@ then
 	done
 	if test -z "$SVN_HTTPD_MODULE_PATH"
 	then
-		skip_all='skipping git svn tests, Apache module dir not found'
-		test_done
+		echo >&2 '*** error: Apache module dir not found'
+		return 1
 	fi
-fi
-
-start_httpd () {
-	repo_base_path="$1"
-	if test -z "$SVN_HTTPD_PORT"
+	if test ! -f "$SVN_HTTPD_MODULE_PATH/mod_dav_svn.so"
 	then
-		echo >&2 'SVN_HTTPD_PORT is not defined!'
-		return
-	fi
-	if test -z "$repo_base_path"
-	then
-		repo_base_path=svn
+		echo >&2 '*** error: Apache module "mod_dav_svn" not found'
+		return 1
 	fi
 
+	repo_base_path="${1-svn}"
 	mkdir "$GIT_DIR"/logs
 
 	cat > "$GIT_DIR/httpd.conf" <<EOF
@@ -132,19 +121,31 @@ LoadModule dav_svn_module $SVN_HTTPD_MODULE_PATH/mod_dav_svn.so
 	SVNPath "$rawsvnrepo"
 </Location>
 EOF
+}
+
+start_httpd () {
+	if test -z "$SVN_HTTPD_PORT"
+	then
+		echo >&2 'SVN_HTTPD_PORT is not defined!'
+		return
+	fi
+
+	prepare_httpd "$1" || return 1
+
 	"$SVN_HTTPD_PATH" -f "$GIT_DIR"/httpd.conf -k start
 	svnrepo="http://127.0.0.1:$SVN_HTTPD_PORT/$repo_base_path"
 }
 
 stop_httpd () {
 	test -z "$SVN_HTTPD_PORT" && return
+	test ! -f "$GIT_DIR/httpd.conf" && return
 	"$SVN_HTTPD_PATH" -f "$GIT_DIR"/httpd.conf -k stop
 }
 
 convert_to_rev_db () {
-	"$PERL_PATH" -w -- - "$@" <<\EOF
+	perl -w -- - "$@" <<\EOF
 use strict;
-@ARGV == 2 or die "Usage: convert_to_rev_db <input> <output>";
+@ARGV == 2 or die "usage: convert_to_rev_db <input> <output>";
 open my $wr, '+>', $ARGV[1] or die "$!: couldn't open: $ARGV[1]";
 open my $rd, '<', $ARGV[0] or die "$!: couldn't open: $ARGV[0]";
 my $size = (stat($rd))[7];
@@ -182,3 +183,15 @@ start_svnserve () {
              --listen-host 127.0.0.1 &
 }
 
+prepare_a_utf8_locale () {
+	a_utf8_locale=$(locale -a | sed -n '/\.[uU][tT][fF]-*8$/{
+	p
+	q
+}')
+	if test -n "$a_utf8_locale"
+	then
+		test_set_prereq UTF8
+	else
+		say "# UTF-8 locale not available, some tests are skipped"
+	fi
+}
