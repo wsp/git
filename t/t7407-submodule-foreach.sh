@@ -80,6 +80,22 @@ test_expect_success 'test basic "submodule foreach" usage' '
 	test_i18ncmp expect actual
 '
 
+cat >expect <<EOF
+Entering '../sub1'
+$pwd/clone-foo1-../sub1-$sub1sha1
+Entering '../sub3'
+$pwd/clone-foo3-../sub3-$sub3sha1
+EOF
+
+test_expect_success 'test "submodule foreach" from subdirectory' '
+	mkdir clone/sub &&
+	(
+		cd clone/sub &&
+		git submodule foreach "echo \$toplevel-\$name-\$sm_path-\$sha1" >../../actual
+	) &&
+	test_i18ncmp expect actual
+'
+
 test_expect_success 'setup nested submodules' '
 	git clone submodule nested1 &&
 	git clone submodule nested2 &&
@@ -129,7 +145,7 @@ test_expect_success 'use "submodule foreach" to checkout 2nd level submodule' '
 		git rev-parse --resolve-git-dir nested1/.git &&
 		test_must_fail git rev-parse --resolve-git-dir nested1/nested2/.git &&
 		git submodule foreach "git submodule update --init" &&
-		git rev-parse --resolve-git-dir nested1/nested1/nested2/.git
+		git rev-parse --resolve-git-dir nested1/nested2/.git &&
 		test_must_fail git rev-parse --resolve-git-dir nested1/nested2/nested3/.git
 	)
 '
@@ -157,6 +173,26 @@ test_expect_success 'test messages from "foreach --recursive"' '
 	(
 		cd clone2 &&
 		git submodule foreach --recursive "true" > ../actual
+	) &&
+	test_i18ncmp expect actual
+'
+
+cat > expect <<EOF
+Entering '../nested1'
+Entering '../nested1/nested2'
+Entering '../nested1/nested2/nested3'
+Entering '../nested1/nested2/nested3/submodule'
+Entering '../sub1'
+Entering '../sub2'
+Entering '../sub3'
+EOF
+
+test_expect_success 'test messages from "foreach --recursive" from subdirectory' '
+	(
+		cd clone2 &&
+		mkdir untracked &&
+		cd untracked &&
+		git submodule foreach --recursive >../../actual
 	) &&
 	test_i18ncmp expect actual
 '
@@ -226,22 +262,43 @@ test_expect_success 'test "status --recursive"' '
 	test_cmp expect actual
 '
 
-sed -e "/nested1 /s/.*/+$nested1sha1 nested1 (file2~1)/;/sub[1-3]/d" < expect > expect2
-mv -f expect2 expect
+cat > expect <<EOF
+ $nested1sha1 nested1 (heads/master)
++$nested2sha1 nested1/nested2 (file2~1)
+ $nested3sha1 nested1/nested2/nested3 (heads/master)
+ $submodulesha1 nested1/nested2/nested3/submodule (heads/master)
+EOF
 
 test_expect_success 'ensure "status --cached --recursive" preserves the --cached flag' '
 	(
 		cd clone3 &&
 		(
-			cd nested1 &&
+			cd nested1/nested2 &&
 			test_commit file2
 		) &&
 		git submodule status --cached --recursive -- nested1 > ../actual
 	) &&
-	if test_have_prereq MINGW
-	then
-		dos2unix actual
-	fi &&
+	test_cmp expect actual
+'
+
+nested2sha1=$(git -C clone3/nested1/nested2 rev-parse HEAD)
+
+cat > expect <<EOF
+ $nested1sha1 ../nested1 (heads/master)
++$nested2sha1 ../nested1/nested2 (file2)
+ $nested3sha1 ../nested1/nested2/nested3 (heads/master)
+ $submodulesha1 ../nested1/nested2/nested3/submodule (heads/master)
+ $sub1sha1 ../sub1 ($sub1sha1_short)
+ $sub2sha1 ../sub2 ($sub2sha1_short)
+ $sub3sha1 ../sub3 (heads/master)
+EOF
+
+test_expect_success 'test "status --recursive" from sub directory' '
+	(
+		cd clone3 &&
+		mkdir tmp && cd tmp &&
+		git submodule status --recursive > ../../actual
+	) &&
 	test_cmp expect actual
 '
 
@@ -309,6 +366,15 @@ test_expect_success 'command passed to foreach --recursive retains notion of std
 		cd clone2 &&
 		git submodule foreach --recursive echo success >../expected &&
 		yes | git submodule foreach --recursive "read y && test \"x\$y\" = xy && echo success" >../actual
+	) &&
+	test_cmp expected actual
+'
+
+test_expect_success 'multi-argument command passed to foreach is not shell-evaluated twice' '
+	(
+		cd super &&
+		git submodule foreach "echo \\\"quoted\\\"" > ../expected &&
+		git submodule foreach echo \"quoted\" > ../actual
 	) &&
 	test_cmp expected actual
 '
