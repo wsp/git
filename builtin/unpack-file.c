@@ -1,6 +1,4 @@
-#include "cache.h"
-#include "blob.h"
-#include "exec_cmd.h"
+#include "builtin.h"
 
 static char *create_temp_file(unsigned char *sha1)
 {
@@ -14,7 +12,7 @@ static char *create_temp_file(unsigned char *sha1)
 	if (!buf || type != OBJ_BLOB)
 		die("unable to read blob object %s", sha1_to_hex(sha1));
 
-	strcpy(path, ".merge_file_XXXXXX");
+	xsnprintf(path, sizeof(path), ".merge_file_XXXXXX");
 	fd = xmkstemp(path);
 	if (write_in_full(fd, buf, size) != size)
 		die_errno("unable to write temp-file");
