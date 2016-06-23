@@ -8,17 +8,6 @@
 /* Internal API */
 
 /*
- * Output the next line for a graph.
- * This formats the next graph line into the specified strbuf.  It is not
- * terminated with a newline.
- *
- * Returns 1 if the line includes the current commit, and 0 otherwise.
- * graph_next_line() will return 1 exactly once for each time
- * graph_update() is called.
- */
-static int graph_next_line(struct git_graph *graph, struct strbuf *sb);
-
-/*
  * Output a padding line in the graph.
  * This is similar to graph_next_line().  However, it is guaranteed to
  * never print the current commit line.  Instead, if the commit line is
@@ -70,39 +59,28 @@ enum graph_state {
 	GRAPH_COLLAPSING
 };
 
-/*
- * The list of available column colors.
- */
-static char column_colors[][COLOR_MAXLEN] = {
-	GIT_COLOR_RED,
-	GIT_COLOR_GREEN,
-	GIT_COLOR_YELLOW,
-	GIT_COLOR_BLUE,
-	GIT_COLOR_MAGENTA,
-	GIT_COLOR_CYAN,
-	GIT_COLOR_BOLD_RED,
-	GIT_COLOR_BOLD_GREEN,
-	GIT_COLOR_BOLD_YELLOW,
-	GIT_COLOR_BOLD_BLUE,
-	GIT_COLOR_BOLD_MAGENTA,
-	GIT_COLOR_BOLD_CYAN,
-};
+static const char **column_colors;
+static unsigned short column_colors_max;
 
-#define COLUMN_COLORS_MAX (ARRAY_SIZE(column_colors))
-
-static const char *column_get_color_code(const struct column *c)
+void graph_set_column_colors(const char **colors, unsigned short colors_max)
 {
-	return column_colors[c->color];
+	column_colors = colors;
+	column_colors_max = colors_max;
+}
+
+static const char *column_get_color_code(unsigned short color)
+{
+	return column_colors[color];
 }
 
 static void strbuf_write_column(struct strbuf *sb, const struct column *c,
 				char col_char)
 {
-	if (c->color < COLUMN_COLORS_MAX)
-		strbuf_addstr(sb, column_get_color_code(c));
+	if (c->color < column_colors_max)
+		strbuf_addstr(sb, column_get_color_code(c->color));
 	strbuf_addch(sb, col_char);
-	if (c->color < COLUMN_COLORS_MAX)
-		strbuf_addstr(sb, GIT_COLOR_RESET);
+	if (c->color < column_colors_max)
+		strbuf_addstr(sb, column_get_color_code(column_colors_max));
 }
 
 struct git_graph {
@@ -211,9 +189,28 @@ struct git_graph {
 	unsigned short default_column_color;
 };
 
+static struct strbuf *diff_output_prefix_callback(struct diff_options *opt, void *data)
+{
+	struct git_graph *graph = data;
+	static struct strbuf msgbuf = STRBUF_INIT;
+
+	assert(opt);
+	assert(graph);
+
+	opt->output_prefix_length = graph->width;
+	strbuf_reset(&msgbuf);
+	graph_padding_line(graph, &msgbuf);
+	return &msgbuf;
+}
+
 struct git_graph *graph_init(struct rev_info *opt)
 {
 	struct git_graph *graph = xmalloc(sizeof(struct git_graph));
+
+	if (!column_colors)
+		graph_set_column_colors(column_colors_ansi,
+					column_colors_ansi_max);
+
 	graph->commit = NULL;
 	graph->revs = opt;
 	graph->num_parents = 0;
@@ -230,19 +227,25 @@ struct git_graph *graph_init(struct rev_info *opt)
 	 * always increment it for the first commit we output.
 	 * This way we start at 0 for the first commit.
 	 */
-	graph->default_column_color = COLUMN_COLORS_MAX - 1;
+	graph->default_column_color = column_colors_max - 1;
 
 	/*
 	 * Allocate a reasonably large default number of columns
 	 * We'll automatically grow columns later if we need more room.
 	 */
 	graph->column_capacity = 30;
-	graph->columns = xmalloc(sizeof(struct column) *
-				 graph->column_capacity);
-	graph->new_columns = xmalloc(sizeof(struct column) *
-				     graph->column_capacity);
-	graph->mapping = xmalloc(sizeof(int) * 2 * graph->column_capacity);
-	graph->new_mapping = xmalloc(sizeof(int) * 2 * graph->column_capacity);
+	ALLOC_ARRAY(graph->columns, graph->column_capacity);
+	ALLOC_ARRAY(graph->new_columns, graph->column_capacity);
+	ALLOC_ARRAY(graph->mapping, 2 * graph->column_capacity);
+	ALLOC_ARRAY(graph->new_mapping, 2 * graph->column_capacity);
+
+	/*
+	 * The diff output prefix callback, with this we can make
+	 * all the diff output to align with the graph lines.
+	 */
+	opt->diffopt.output_prefix = diff_output_prefix_callback;
+	opt->diffopt.output_prefix_data = graph;
+	opt->diffopt.output_prefix_length = 0;
 
 	return graph;
 }
@@ -262,16 +265,10 @@ static void graph_ensure_capacity(struct git_graph *graph, int num_columns)
 		graph->column_capacity *= 2;
 	} while (graph->column_capacity < num_columns);
 
-	graph->columns = xrealloc(graph->columns,
-				  sizeof(struct column) *
-				  graph->column_capacity);
-	graph->new_columns = xrealloc(graph->new_columns,
-				      sizeof(struct column) *
-				      graph->column_capacity);
-	graph->mapping = xrealloc(graph->mapping,
-				  sizeof(int) * 2 * graph->column_capacity);
-	graph->new_mapping = xrealloc(graph->new_mapping,
-				      sizeof(int) * 2 * graph->column_capacity);
+	REALLOC_ARRAY(graph->columns, graph->column_capacity);
+	REALLOC_ARRAY(graph->new_columns, graph->column_capacity);
+	REALLOC_ARRAY(graph->mapping, graph->column_capacity * 2);
+	REALLOC_ARRAY(graph->new_mapping, graph->column_capacity * 2);
 }
 
 /*
@@ -345,8 +342,8 @@ static struct commit_list *first_interesting_parent(struct git_graph *graph)
 
 static unsigned short graph_get_current_column_color(const struct git_graph *graph)
 {
-	if (!DIFF_OPT_TST(&graph->revs->diffopt, COLOR_DIFF))
-		return COLUMN_COLORS_MAX;
+	if (!want_color(graph->revs->diffopt.use_color))
+		return column_colors_max;
 	return graph->default_column_color;
 }
 
@@ -356,7 +353,7 @@ static unsigned short graph_get_current_column_color(const struct git_graph *gra
 static void graph_increment_column_color(struct git_graph *graph)
 {
 	graph->default_column_color = (graph->default_column_color + 1) %
-		COLUMN_COLORS_MAX;
+		column_colors_max;
 }
 
 static unsigned short graph_find_commit_color(const struct git_graph *graph,
@@ -420,7 +417,7 @@ static void graph_update_width(struct git_graph *graph,
 		max_cols++;
 
 	/*
-	 * We added a column for the the current commit as part of
+	 * We added a column for the current commit as part of
 	 * graph->num_parents.  If the current commit was already in
 	 * graph->columns, then we have double counted it.
 	 */
@@ -775,22 +772,9 @@ static void graph_output_commit_char(struct git_graph *graph, struct strbuf *sb)
 	}
 
 	/*
-	 * If revs->left_right is set, print '<' for commits that
-	 * come from the left side, and '>' for commits from the right
-	 * side.
+	 * get_revision_mark() handles all other cases without assert()
 	 */
-	if (graph->revs && graph->revs->left_right) {
-		if (graph->commit->object.flags & SYMMETRIC_LEFT)
-			strbuf_addch(sb, '<');
-		else
-			strbuf_addch(sb, '>');
-		return;
-	}
-
-	/*
-	 * Print '*' in all other cases
-	 */
-	strbuf_addch(sb, '*');
+	strbuf_addstr(sb, get_revision_mark(graph->revs, graph->commit));
 }
 
 /*
@@ -809,10 +793,10 @@ static int graph_draw_octopus_merge(struct git_graph *graph,
 	int num_dashes =
 		((graph->num_parents - dashless_commits) * 2) - 1;
 	for (i = 0; i < num_dashes; i++) {
-		col_num = (i / 2) + dashless_commits;
+		col_num = (i / 2) + dashless_commits + graph->commit_index;
 		strbuf_write_column(sb, &graph->new_columns[col_num], '-');
 	}
-	col_num = (i / 2) + dashless_commits;
+	col_num = (i / 2) + dashless_commits + graph->commit_index;
 	strbuf_write_column(sb, &graph->new_columns[col_num], '.');
 	return num_dashes + 1;
 }
@@ -1124,7 +1108,7 @@ static void graph_output_collapsing_line(struct git_graph *graph, struct strbuf 
 		graph_update_state(graph, GRAPH_PADDING);
 }
 
-static int graph_next_line(struct git_graph *graph, struct strbuf *sb)
+int graph_next_line(struct git_graph *graph, struct strbuf *sb)
 {
 	switch (graph->state) {
 	case GRAPH_PADDING:
@@ -1153,7 +1137,7 @@ static int graph_next_line(struct git_graph *graph, struct strbuf *sb)
 
 static void graph_padding_line(struct git_graph *graph, struct strbuf *sb)
 {
-	int i, j;
+	int i;
 
 	if (graph->state != GRAPH_COMMIT) {
 		graph_next_line(graph, sb);
@@ -1169,21 +1153,11 @@ static void graph_padding_line(struct git_graph *graph, struct strbuf *sb)
 	 */
 	for (i = 0; i < graph->num_columns; i++) {
 		struct column *col = &graph->columns[i];
-		struct commit *col_commit = col->commit;
-		if (col_commit == graph->commit) {
-			strbuf_write_column(sb, col, '|');
-
-			if (graph->num_parents < 3)
-				strbuf_addch(sb, ' ');
-			else {
-				int num_spaces = ((graph->num_parents - 2) * 2);
-				for (j = 0; j < num_spaces; j++)
-					strbuf_addch(sb, ' ');
-			}
-		} else {
-			strbuf_write_column(sb, col, '|');
+		strbuf_write_column(sb, col, '|');
+		if (col->commit == graph->commit && graph->num_parents > 2)
+			strbuf_addchars(sb, ' ', (graph->num_parents - 2) * 2);
+		else
 			strbuf_addch(sb, ' ');
-		}
 	}
 
 	graph_pad_horizontally(graph, sb, graph->num_columns);
@@ -1207,7 +1181,17 @@ void graph_show_commit(struct git_graph *graph)
 	if (!graph)
 		return;
 
-	while (!shown_commit_line) {
+	/*
+	 * When showing a diff of a merge against each of its parents, we
+	 * are called once for each parent without graph_update having been
+	 * called.  In this case, simply output a single padding line.
+	 */
+	if (graph_is_commit_finished(graph)) {
+		graph_show_padding(graph);
+		shown_commit_line = 1;
+	}
+
+	while (!shown_commit_line && !graph_is_commit_finished(graph)) {
 		shown_commit_line = graph_next_line(graph, &msgbuf);
 		fwrite(msgbuf.buf, sizeof(char), msgbuf.len, stdout);
 		if (!shown_commit_line)
