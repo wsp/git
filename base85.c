@@ -7,9 +7,9 @@
 #define say1(a,b) fprintf(stderr, a, b)
 #define say2(a,b,c) fprintf(stderr, a, b, c)
 #else
-#define say(a) do {} while(0)
-#define say1(a,b) do {} while(0)
-#define say2(a,b,c) do {} while(0)
+#define say(a) do { /* nothing */ } while (0)
+#define say1(a,b) do { /* nothing */ } while (0)
+#define say2(a,b,c) do { /* nothing */ } while (0)
 #endif
 
 static const char en85[] = {
@@ -41,7 +41,7 @@ int decode_85(char *dst, const char *buffer, int len)
 {
 	prep_base85();
 
-	say2("decode 85 <%.*s>", len/4*5, buffer);
+	say2("decode 85 <%.*s>", len / 4 * 5, buffer);
 	while (len) {
 		unsigned acc = 0;
 		int de, cnt = 4;
@@ -83,7 +83,7 @@ void encode_85(char *buf, const unsigned char *data, int bytes)
 		unsigned acc = 0;
 		int cnt;
 		for (cnt = 24; cnt >= 0; cnt -= 8) {
-			int ch = *data++;
+			unsigned ch = *data++;
 			acc |= ch << cnt;
 			if (--bytes == 0)
 				break;
