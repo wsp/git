@@ -3,10 +3,11 @@ git-web{litdd}browse(1)
 
 NAME
 ----
-git-web--browse - git helper script to launch a web browser
+git-web--browse - Git helper script to launch a web browser
 
 SYNOPSIS
 --------
+[verse]
 'git web{litdd}browse' [OPTIONS] URL/FILE ...
 
 DESCRIPTION
@@ -33,6 +34,8 @@ The following browsers (or commands) are currently supported:
 * dillo
 * open (this is the default under Mac OS X GUI)
 * start (this is the default under MinGW)
+* cygstart (this is the default under Cygwin)
+* xdg-open
 
 Custom commands may also be specified.
 
@@ -49,7 +52,7 @@ OPTIONS
 
 -c <conf.var>::
 --config=<conf.var>::
-	CONF.VAR is looked up in the git config files. If it's set,
+	CONF.VAR is looked up in the Git config files. If it's set,
 	then its value specifies the browser that should be used.
 
 CONFIGURATION VARIABLES
@@ -59,7 +62,7 @@ CONF.VAR (from -c option) and web.browser
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The web browser can be specified using a configuration variable passed
-with the -c (or --config) command line option, or the 'web.browser'
+with the -c (or --config) command-line option, or the 'web.browser'
 configuration variable if the former is not used.
 
 browser.<tool>.path
@@ -68,7 +71,7 @@ browser.<tool>.path
 You can explicitly provide a full path to your preferred browser by
 setting the configuration variable 'browser.<tool>.path'. For example,
 you can configure the absolute path to firefox by setting
-'browser.firefox.path'. Otherwise, 'git web--browse' assumes the tool
+'browser.firefox.path'. Otherwise, 'git web{litdd}browse' assumes the tool
 is available in PATH.
 
 browser.<tool>.cmd
@@ -84,7 +87,7 @@ the URLs passed as arguments.
 Note about konqueror
 --------------------
 
-When 'konqueror' is specified by a command line option or a
+When 'konqueror' is specified by a command-line option or a
 configuration variable, we launch 'kfmclient' to try to open the HTML
 man page on an already opened konqueror in a new tab if possible.
 
