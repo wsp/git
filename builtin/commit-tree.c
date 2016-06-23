@@ -10,15 +10,17 @@
 #include "utf8.h"
 #include "gpg-interface.h"
 
-static const char commit_tree_usage[] = "git commit-tree [(-p <sha1>)...] [-S<signer>] [-m <message>] [-F <file>] <sha1> <changelog";
+static const char commit_tree_usage[] = "git commit-tree [(-p <sha1>)...] [-S[<keyid>]] [-m <message>] [-F <file>] <sha1>";
+
+static const char *sign_commit;
 
 static void new_parent(struct commit *parent, struct commit_list **parents_p)
 {
-	unsigned char *sha1 = parent->object.sha1;
+	struct object_id *oid = &parent->object.oid;
 	struct commit_list *parents;
 	for (parents = *parents_p; parents; parents = parents->next) {
 		if (parents->item == parent) {
-			error("duplicate parent %s ignored", sha1_to_hex(sha1));
+			error("duplicate parent %s ignored", oid_to_hex(oid));
 			return;
 		}
 		parents_p = &parents->next;
@@ -41,15 +43,11 @@ int cmd_commit_tree(int argc, const char **argv, const char *prefix)
 	unsigned char tree_sha1[20];
 	unsigned char commit_sha1[20];
 	struct strbuf buffer = STRBUF_INIT;
-	const char *sign_commit = NULL;
 
 	git_config(commit_tree_config, NULL);
 
 	if (argc < 2 || !strcmp(argv[1], "-h"))
 		usage(commit_tree_usage);
-
-	if (get_sha1(argv[1], tree_sha1))
-		die("Not a valid object name %s", argv[1]);
 
 	for (i = 1; i < argc; i++) {
 		const char *arg = argv[i];
@@ -57,15 +55,18 @@ int cmd_commit_tree(int argc, const char **argv, const char *prefix)
 			unsigned char sha1[20];
 			if (argc <= ++i)
 				usage(commit_tree_usage);
-			if (get_sha1(argv[i], sha1))
+			if (get_sha1_commit(argv[i], sha1))
 				die("Not a valid object name %s", argv[i]);
 			assert_sha1_type(sha1, OBJ_COMMIT);
 			new_parent(lookup_commit(sha1), &parents);
 			continue;
 		}
 
-		if (!memcmp(arg, "-S", 2)) {
-			sign_commit = arg + 2;
+		if (skip_prefix(arg, "-S", &sign_commit))
+			continue;
+
+		if (!strcmp(arg, "--no-gpg-sign")) {
+			sign_commit = NULL;
 			continue;
 		}
 
@@ -104,7 +105,7 @@ int cmd_commit_tree(int argc, const char **argv, const char *prefix)
 			continue;
 		}
 
-		if (get_sha1(arg, tree_sha1))
+		if (get_sha1_tree(arg, tree_sha1))
 			die("Not a valid object name %s", arg);
 		if (got_tree)
 			die("Cannot give more than one trees");
@@ -116,8 +117,8 @@ int cmd_commit_tree(int argc, const char **argv, const char *prefix)
 			die_errno("git commit-tree: failed to read");
 	}
 
-	if (commit_tree(buffer.buf, tree_sha1, parents, commit_sha1,
-			NULL, sign_commit)) {
+	if (commit_tree(buffer.buf, buffer.len, tree_sha1, parents,
+			commit_sha1, NULL, sign_commit)) {
 		strbuf_release(&buffer);
 		return 1;
 	}
