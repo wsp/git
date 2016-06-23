@@ -4,13 +4,6 @@ test_description='applying patch with mode bits'
 
 . ./test-lib.sh
 
-if test "$(git config --bool core.filemode)" = false
-then
-	say 'filemode disabled on the filesystem'
-else
-	test_set_prereq FILEMODE
-fi
-
 test_expect_success setup '
 	echo original >file &&
 	git add file &&

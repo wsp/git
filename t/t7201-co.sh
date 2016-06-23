@@ -11,10 +11,12 @@ Test switching across them.
   ! [master] Initial A one, A two
    * [renamer] Renamer R one->uno, M two
     ! [side] Side M one, D two, A three
-  ---
-    + [side] Side M one, D two, A three
-   *  [renamer] Renamer R one->uno, M two
-  +*+ [master] Initial A one, A two
+     ! [simple] Simple D one, M two
+  ----
+     + [simple] Simple D one, M two
+    +  [side] Side M one, D two, A three
+   *   [renamer] Renamer R one->uno, M two
+  +*++ [master] Initial A one, A two
 
 '
 
@@ -52,6 +54,11 @@ test_expect_success setup '
 	git update-index --add --remove one two three &&
 	git commit -m "Side M one, D two, A three" &&
 
+	git checkout -b simple master &&
+	rm -f one &&
+	fill a c e > two &&
+	git commit -a -m "Simple D one, M two" &&
+
 	git checkout master
 '
 
@@ -81,14 +88,10 @@ test_expect_success "checkout with unrelated dirty tree without -m" '
 
 	git checkout -f master &&
 	fill 0 1 2 3 4 5 6 7 8 >same &&
-	cp same kept
+	cp same kept &&
 	git checkout side >messages &&
-	test_cmp same kept
-	(cat > messages.expect <<EOF
-M	same
-EOF
-) &&
-	touch messages.expect &&
+	test_cmp same kept &&
+	printf "M\t%s\n" same >messages.expect &&
 	test_cmp messages.expect messages
 '
 
@@ -102,10 +105,7 @@ test_expect_success "checkout -m with dirty tree" '
 
 	test "$(git symbolic-ref HEAD)" = "refs/heads/side" &&
 
-	(cat >expect.messages <<EOF
-M	one
-EOF
-) &&
+	printf "M\t%s\n" one >expect.messages &&
 	test_cmp expect.messages messages &&
 
 	fill "M	one" "A	three" "D	two" >expect.master &&
@@ -166,13 +166,80 @@ test_expect_success 'checkout -m with merge conflict' '
 	! test -s current
 '
 
+test_expect_success 'format of merge conflict from checkout -m' '
+
+	git checkout -f master && git clean -f &&
+
+	fill b d > two &&
+	git checkout -m simple &&
+
+	git ls-files >current &&
+	fill same two two two >expect &&
+	test_cmp current expect &&
+
+	cat <<-EOF >expect &&
+	<<<<<<< simple
+	a
+	c
+	e
+	=======
+	b
+	d
+	>>>>>>> local
+	EOF
+	test_cmp two expect
+'
+
+test_expect_success 'checkout --merge --conflict=diff3 <branch>' '
+
+	git checkout -f master && git reset --hard && git clean -f &&
+
+	fill b d > two &&
+	git checkout --merge --conflict=diff3 simple &&
+
+	cat <<-EOF >expect &&
+	<<<<<<< simple
+	a
+	c
+	e
+	||||||| master
+	a
+	b
+	c
+	d
+	e
+	=======
+	b
+	d
+	>>>>>>> local
+	EOF
+	test_cmp two expect
+'
+
+test_expect_success 'switch to another branch while carrying a deletion' '
+
+	git checkout -f master && git reset --hard && git clean -f &&
+	git rm two &&
+
+	test_must_fail git checkout simple 2>errs &&
+	test_i18ngrep overwritten errs &&
+
+	git checkout --merge simple 2>errs &&
+	test_i18ngrep ! overwritten errs &&
+	git ls-files -u &&
+	test_must_fail git cat-file -t :0:two &&
+	test "$(git cat-file -t :1:two)" = blob &&
+	test "$(git cat-file -t :2:two)" = blob &&
+	test_must_fail git cat-file -t :3:two
+'
+
 test_expect_success 'checkout to detach HEAD (with advice declined)' '
 
 	git config advice.detachedHead false &&
 	git checkout -f renamer && git clean -f &&
 	git checkout renamer^ 2>messages &&
-	grep "HEAD is now at 7329388" messages &&
-	test 1 -eq $(wc -l <messages) &&
+	test_i18ngrep "HEAD is now at 7329388" messages &&
+	test_line_count = 1 messages &&
 	H=$(git rev-parse --verify HEAD) &&
 	M=$(git show-ref -s --verify refs/heads/master) &&
 	test "z$H" = "z$M" &&
@@ -189,8 +256,8 @@ test_expect_success 'checkout to detach HEAD' '
 	git config advice.detachedHead true &&
 	git checkout -f renamer && git clean -f &&
 	git checkout renamer^ 2>messages &&
-	grep "HEAD is now at 7329388" messages &&
-	test 1 -lt $(wc -l <messages) &&
+	test_i18ngrep "HEAD is now at 7329388" messages &&
+	test_line_count -gt 1 messages &&
 	H=$(git rev-parse --verify HEAD) &&
 	M=$(git show-ref -s --verify refs/heads/master) &&
 	test "z$H" = "z$M" &&
@@ -335,17 +402,26 @@ test_expect_success \
 
 test_expect_success \
     'checkout w/autosetupmerge=always sets up tracking' '
+    test_when_finished git config branch.autosetupmerge false &&
     git config branch.autosetupmerge always &&
     git checkout master &&
     git checkout -b track2 &&
     test "$(git config branch.track2.remote)" &&
-    test "$(git config branch.track2.merge)"
-    git config branch.autosetupmerge false'
+    test "$(git config branch.track2.merge)"'
 
 test_expect_success 'checkout w/--track from non-branch HEAD fails' '
     git checkout master^0 &&
     test_must_fail git symbolic-ref HEAD &&
     test_must_fail git checkout --track -b track &&
+    test_must_fail git rev-parse --verify track &&
+    test_must_fail git symbolic-ref HEAD &&
+    test "z$(git rev-parse master^0)" = "z$(git rev-parse HEAD)"
+'
+
+test_expect_success 'checkout w/--track from tag fails' '
+    git checkout master^0 &&
+    test_must_fail git symbolic-ref HEAD &&
+    test_must_fail git checkout --track -b track frotz &&
     test_must_fail git rev-parse --verify track &&
     test_must_fail git symbolic-ref HEAD &&
     test "z$(git rev-parse master^0)" = "z$(git rev-parse HEAD)"
@@ -365,8 +441,8 @@ test_expect_success 'detach a symbolic link HEAD' '
 
 test_expect_success \
     'checkout with --track fakes a sensible -b <name>' '
+    git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*" &&
     git update-ref refs/remotes/origin/koala/bear renamer &&
-    git update-ref refs/new/koala/bear renamer &&
 
     git checkout --track origin/koala/bear &&
     test "refs/heads/koala/bear" = "$(git symbolic-ref HEAD)" &&
@@ -381,12 +457,6 @@ test_expect_success \
     git checkout master && git branch -D koala/bear &&
 
     git checkout --track remotes/origin/koala/bear &&
-    test "refs/heads/koala/bear" = "$(git symbolic-ref HEAD)" &&
-    test "$(git rev-parse HEAD)" = "$(git rev-parse renamer)" &&
-
-    git checkout master && git branch -D koala/bear &&
-
-    git checkout --track refs/new/koala/bear &&
     test "refs/heads/koala/bear" = "$(git symbolic-ref HEAD)" &&
     test "$(git rev-parse HEAD)" = "$(git rev-parse renamer)"
 '
@@ -481,7 +551,7 @@ test_expect_success 'checkout with --merge, in diff3 -m style' '
 	(
 		echo "<<<<<<< ours"
 		echo ourside
-		echo "|||||||"
+		echo "||||||| base"
 		echo original
 		echo "======="
 		echo theirside
@@ -514,7 +584,7 @@ test_expect_success 'checkout --conflict=merge, overriding config' '
 '
 
 test_expect_success 'checkout --conflict=diff3' '
-	git config --unset merge.conflictstyle
+	test_unconfig merge.conflictstyle &&
 	setup_conflicting_index &&
 	echo "none of the above" >sample &&
 	echo ourside >expect &&
@@ -525,7 +595,7 @@ test_expect_success 'checkout --conflict=diff3' '
 	(
 		echo "<<<<<<< ours"
 		echo ourside
-		echo "|||||||"
+		echo "||||||| base"
 		echo original
 		echo "======="
 		echo theirside
