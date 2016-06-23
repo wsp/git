@@ -19,7 +19,8 @@ test_expect_success 'setup' '
 
 	test_when_finished "rm -f \"tab	embedded.txt\"" &&
 	test_when_finished "rm -f '\''\"quoteembedded\".txt'\''" &&
-	if touch -- "tab	embedded.txt" '\''"quoteembedded".txt'\''
+	if test_have_prereq !MINGW &&
+		touch -- "tab	embedded.txt" '\''"quoteembedded".txt'\''
 	then
 		test_set_prereq FUNNYNAMES
 	fi
@@ -70,6 +71,22 @@ test_expect_success 'whitespace-damaged traditional patch' '
 	rm -f postimage.txt &&
 	git apply -v "$vector/damaged.diff" &&
 	test_cmp expected postimage.txt
+'
+
+test_expect_success 'traditional patch with colon in timezone' '
+	echo postimage >expected &&
+	reset_preimage &&
+	rm -f "post image.txt" &&
+	git apply "$vector/funny-tz.diff" &&
+	test_cmp expected "post image.txt"
+'
+
+test_expect_success 'traditional, whitespace-damaged, colon in timezone' '
+	echo postimage >expected &&
+	reset_preimage &&
+	rm -f "post image.txt" &&
+	git apply "$vector/damaged-tz.diff" &&
+	test_cmp expected "post image.txt"
 '
 
 test_done

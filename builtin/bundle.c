@@ -12,8 +12,8 @@
 static const char builtin_bundle_usage[] =
   "git bundle create <file> <git-rev-list args>\n"
   "   or: git bundle verify <file>\n"
-  "   or: git bundle list-heads <file> [refname...]\n"
-  "   or: git bundle unbundle <file> [refname...]";
+  "   or: git bundle list-heads <file> [<refname>...]\n"
+  "   or: git bundle unbundle <file> [<refname>...]";
 
 int cmd_bundle(int argc, const char **argv, const char *prefix)
 {
@@ -42,9 +42,13 @@ int cmd_bundle(int argc, const char **argv, const char *prefix)
 
 	if (!strcmp(cmd, "verify")) {
 		close(bundle_fd);
+		if (argc != 1) {
+			usage(builtin_bundle_usage);
+			return 1;
+		}
 		if (verify_bundle(&header, 1))
 			return 1;
-		fprintf(stderr, "%s is okay\n", bundle_file);
+		fprintf(stderr, _("%s is okay\n"), bundle_file);
 		return 0;
 	}
 	if (!strcmp(cmd, "list-heads")) {
@@ -52,13 +56,17 @@ int cmd_bundle(int argc, const char **argv, const char *prefix)
 		return !!list_bundle_refs(&header, argc, argv);
 	}
 	if (!strcmp(cmd, "create")) {
+		if (argc < 2) {
+			usage(builtin_bundle_usage);
+			return 1;
+		}
 		if (!startup_info->have_repository)
-			die("Need a repository to create a bundle.");
+			die(_("Need a repository to create a bundle."));
 		return !!create_bundle(&header, bundle_file, argc, argv);
 	} else if (!strcmp(cmd, "unbundle")) {
 		if (!startup_info->have_repository)
-			die("Need a repository to unbundle.");
-		return !!unbundle(&header, bundle_fd) ||
+			die(_("Need a repository to unbundle."));
+		return !!unbundle(&header, bundle_fd, 0) ||
 			list_bundle_refs(&header, argc, argv);
 	} else
 		usage(builtin_bundle_usage);
