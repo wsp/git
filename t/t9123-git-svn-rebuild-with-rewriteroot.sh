@@ -16,8 +16,8 @@ rm -rf import
 
 test_expect_success 'init, fetch and checkout repository' '
 	git svn init --rewrite-root=http://invalid.invalid/ "$svnrepo" &&
-	git svn fetch
-	git checkout -b mybranch ${remotes_git_svn}
+	git svn fetch &&
+	git checkout -b mybranch remotes/git-svn
 	'
 
 test_expect_success 'remove rev_map' '
