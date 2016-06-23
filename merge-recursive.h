@@ -17,13 +17,17 @@ struct merge_options {
 	unsigned renormalize : 1;
 	long xdl_opts;
 	int verbosity;
+	int detect_rename;
 	int diff_rename_limit;
 	int merge_rename_limit;
 	int rename_score;
+	int needed_rename_limit;
+	int show_rename_progress;
 	int call_depth;
 	struct strbuf obuf;
 	struct string_list current_file_set;
 	struct string_list current_directory_set;
+	struct string_list df_conflict_file_set;
 };
 
 /* merge_trees() but with recursive ancestor consolidation */
@@ -55,8 +59,5 @@ void init_merge_options(struct merge_options *o);
 struct tree *write_tree_from_memory(struct merge_options *o);
 
 int parse_merge_opt(struct merge_options *out, const char *s);
-
-/* builtin/merge.c */
-int try_merge_command(const char *strategy, struct commit_list *common, const char *head_arg, struct commit_list *remotes);
 
 #endif

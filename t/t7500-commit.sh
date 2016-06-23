@@ -10,7 +10,12 @@ Tests for selected commit options.'
 . ./test-lib.sh
 
 commit_msg_is () {
-	test "`git log --pretty=format:%s%b -1`" = "$1"
+	expect=commit_msg_is.expect
+	actual=commit_msg_is.actual
+
+	printf "%s" "$(git log --pretty=format:%s%b -1)" >"$actual" &&
+	printf "%s" "$1" >"$expect" &&
+	test_i18ncmp "$expect" "$actual"
 }
 
 # A sanity check to see if commit is working at all.
@@ -23,13 +28,20 @@ test_expect_success 'a basic commit in an empty tree should succeed' '
 test_expect_success 'nonexistent template file should return error' '
 	echo changes >> foo &&
 	git add foo &&
-	test_must_fail git commit --template "$PWD"/notexist
+	(
+		GIT_EDITOR="echo hello >\"\$1\"" &&
+		export GIT_EDITOR &&
+		test_must_fail git commit --template "$PWD"/notexist
+	)
 '
 
 test_expect_success 'nonexistent template file in config should return error' '
-	git config commit.template "$PWD"/notexist &&
-	test_must_fail git commit &&
-	git config --unset commit.template
+	test_config commit.template "$PWD"/notexist &&
+	(
+		GIT_EDITOR="echo hello >\"\$1\"" &&
+		export GIT_EDITOR &&
+		test_must_fail git commit
+	)
 '
 
 # From now on we'll use a template file that exists.
@@ -80,14 +92,13 @@ test_expect_success '-t option should be short for --template' '
 
 test_expect_success 'config-specified template should commit' '
 	echo "new template" > "$TEMPLATE" &&
-	git config commit.template "$TEMPLATE" &&
+	test_config commit.template "$TEMPLATE" &&
 	echo "more content" >> foo &&
 	git add foo &&
 	(
 		test_set_editor "$TEST_DIRECTORY"/t7500/add-content &&
 		git commit
 	) &&
-	git config --unset commit.template &&
 	commit_msg_is "new templatecommit message"
 '
 
@@ -108,6 +119,20 @@ test_expect_success 'commit message from file should override template' '
 		git commit --template "$TEMPLATE" --file -
 	) &&
 	commit_msg_is "standard input msg"
+'
+
+cat >"$TEMPLATE" <<\EOF
+
+
+### template
+
+EOF
+test_expect_success 'commit message from template with whitespace issue' '
+	echo "content galore" >>foo &&
+	git add foo &&
+	GIT_EDITOR="$TEST_DIRECTORY"/t7500/add-whitespaced-content git commit \
+		--template "$TEMPLATE" &&
+	commit_msg_is "commit message"
 '
 
 test_expect_success 'using alternate GIT_INDEX_FILE (1)' '
@@ -198,7 +223,8 @@ test_expect_success 'Commit without message is allowed with --allow-empty-messag
 	git add foo &&
 	>empty &&
 	git commit --allow-empty-message <empty &&
-	commit_msg_is ""
+	commit_msg_is "" &&
+	git tag empty-message-commit
 '
 
 test_expect_success 'Commit without message is no-no without --allow-empty-message' '
@@ -213,6 +239,14 @@ test_expect_success 'Commit a message with --allow-empty-message' '
 	git add foo &&
 	git commit --allow-empty-message -m"hello there" &&
 	commit_msg_is "hello there"
+'
+
+test_expect_success 'commit -C empty respects --allow-empty-message' '
+	echo more >>foo &&
+	git add foo &&
+	test_must_fail git commit -C empty-message-commit &&
+	git commit -C empty-message-commit --allow-empty-message &&
+	commit_msg_is ""
 '
 
 commit_for_rebase_autosquash_setup () {
