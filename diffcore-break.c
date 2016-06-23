@@ -68,6 +68,9 @@ static int should_break(struct diff_filespec *src,
 	if (max_size < MINIMUM_BREAK_SIZE)
 		return 0; /* we do not break too small filepair */
 
+	if (!src->size)
+		return 0; /* we do not let empty files get renamed */
+
 	if (diffcore_count_changes(src, dst,
 				   &src->cnt_data, &dst->cnt_data,
 				   0,
@@ -162,8 +165,7 @@ void diffcore_break(int break_score)
 	if (!merge_score)
 		merge_score = DEFAULT_MERGE_SCORE;
 
-	outq.nr = outq.alloc = 0;
-	outq.queue = NULL;
+	DIFF_QUEUE_CLEAR(&outq);
 
 	for (i = 0; i < q->nr; i++) {
 		struct diff_filepair *p = q->queue[i];
@@ -244,6 +246,13 @@ static void merge_broken(struct diff_filepair *p,
 
 	dp = diff_queue(outq, d->one, c->two);
 	dp->score = p->score;
+	/*
+	 * We will be one extra user of the same src side of the
+	 * broken pair, if it was used as the rename source for other
+	 * paths elsewhere.  Increment to mark that the path stays
+	 * in the resulting tree.
+	 */
+	d->one->rename_used++;
 	diff_free_filespec_data(d->two);
 	diff_free_filespec_data(c->one);
 	free(d);
@@ -256,8 +265,7 @@ void diffcore_merge_broken(void)
 	struct diff_queue_struct outq;
 	int i, j;
 
-	outq.nr = outq.alloc = 0;
-	outq.queue = NULL;
+	DIFF_QUEUE_CLEAR(&outq);
 
 	for (i = 0; i < q->nr; i++) {
 		struct diff_filepair *p = q->queue[i];
