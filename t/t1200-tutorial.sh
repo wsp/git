@@ -154,9 +154,9 @@ test_expect_success 'git show-branch' '
 cat > resolve.expect << EOF
 Updating VARIABLE..VARIABLE
 FASTFORWARD (no commit created; -m option ignored)
- example |    1 +
- hello   |    1 +
- 2 files changed, 2 insertions(+), 0 deletions(-)
+ example | 1 +
+ hello   | 1 +
+ 2 files changed, 2 insertions(+)
 EOF
 
 test_expect_success 'git resolve' '
@@ -166,8 +166,8 @@ test_expect_success 'git resolve' '
 		-e "s/^Fast[- ]forward /FASTFORWARD /" >resolve.output
 '
 
-test_expect_success C_LOCALE_OUTPUT 'git resolve output' '
-	test_cmp resolve.expect resolve.output
+test_expect_success 'git resolve output' '
+	test_i18ncmp resolve.expect resolve.output
 '
 
 cat > show-branch2.expect << EOF
