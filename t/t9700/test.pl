@@ -17,6 +17,14 @@ BEGIN {
 use Cwd;
 use File::Basename;
 
+sub adjust_dirsep {
+	my $path = shift;
+	$path =~ s{\\}{/}g;
+	return $path;
+}
+
+my $oid_re = qr/^[0-9a-fA-F]{40}(?:[0-9a-fA-F]{24})?$/;
+
 BEGIN { use_ok('Git') }
 
 # set up
@@ -33,7 +41,7 @@ is($r->config_int("test.int"), 2048, "config_int: integer");
 is($r->config_int("test.nonexistent"), undef, "config_int: nonexistent");
 ok($r->config_bool("test.booltrue"), "config_bool: true");
 ok(!$r->config_bool("test.boolfalse"), "config_bool: false");
-is($r->config_path("test.path"), $r->config("test.pathexpanded"),
+is(adjust_dirsep($r->config_path("test.path")), $r->config("test.pathexpanded"),
    "config_path: ~/foo expansion");
 is_deeply([$r->config_path("test.pathmulti")], ["foo", "bar"],
    "config_path: multiple values");
@@ -45,23 +53,23 @@ is($r->get_color("color.test.slot1", "red"), $ansi_green, "get_color");
 # Failure cases for config:
 # Save and restore STDERR; we will probably extract this into a
 # "dies_ok" method and possibly move the STDERR handling to Git.pm.
-open our $tmpstderr, ">&STDERR" or die "cannot save STDERR"; close STDERR;
-eval { $r->config("test.dupstring") };
-ok($@, "config: duplicate entry in scalar context fails");
+open our $tmpstderr, ">&STDERR" or die "cannot save STDERR";
+open STDERR, ">", "/dev/null" or die "cannot redirect STDERR to /dev/null";
+is($r->config("test.dupstring"), "value2", "config: multivar");
 eval { $r->config_bool("test.boolother") };
 ok($@, "config_bool: non-boolean values fail");
 open STDERR, ">&", $tmpstderr or die "cannot restore STDERR";
 
 # ident
-like($r->ident("aUthor"), qr/^A U Thor <author\@example.com> [0-9]+ \+0000$/,
+like($r->ident("aUthor"), qr/^A U Thor <author\@example.com> [0-9]+ [+-]\d{4}$/,
      "ident scalar: author (type)");
-like($r->ident("cOmmitter"), qr/^C O Mitter <committer\@example.com> [0-9]+ \+0000$/,
+like($r->ident("cOmmitter"), qr/^C O Mitter <committer\@example.com> [0-9]+ [+-]\d{4}$/,
      "ident scalar: committer (type)");
 is($r->ident("invalid"), "invalid", "ident scalar: invalid ident string (no parsing)");
 my ($name, $email, $time_tz) = $r->ident('author');
 is_deeply([$name, $email], ["A U Thor", "author\@example.com"],
 	 "ident array: author");
-like($time_tz, qr/[0-9]+ \+0000/, "ident array: author");
+like($time_tz, qr/[0-9]+ [+-]\d{4}/, "ident array: author");
 is_deeply([$r->ident("Name <email> 123 +0000")], ["Name", "email", "123 +0000"],
 	  "ident array: ident string");
 is_deeply([$r->ident("invalid")], [], "ident array: invalid ident string");
@@ -87,7 +95,7 @@ is(Git::hash_object("blob", $tmpfile), $file1hash, "hash_object: roundtrip");
 open TEMPFILE, ">$tmpfile" or die "Can't open $tmpfile: $!";
 print TEMPFILE my $test_text = "test blob, to be inserted\n";
 close TEMPFILE or die "Failed writing to $tmpfile: $!";
-like(our $newhash = $r->hash_and_insert_object($tmpfile), qr/[0-9a-fA-F]{40}/,
+like(our $newhash = $r->hash_and_insert_object($tmpfile), $oid_re,
      "hash_and_insert_object: returns hash");
 open TEMPFILE, "+>$tmpfile" or die "Can't open $tmpfile: $!";
 is($r->cat_blob($newhash, \*TEMPFILE), length $test_text, "cat_blob: roundtrip size");
@@ -113,7 +121,7 @@ is($r2->wc_subdir, "directory2/", "wc_subdir initial (2)");
 
 # commands in sub directory
 my $last_commit = $r2->command_oneline(qw(rev-parse --verify HEAD));
-like($last_commit, qr/^[0-9a-fA-F]{40}$/, 'rev-parse returned hash');
+like($last_commit, $oid_re, 'rev-parse returned hash');
 my $dir_commit = $r2->command_oneline('log', '-n1', '--pretty=format:%H', '.');
 isnt($last_commit, $dir_commit, 'log . does not show last commit');
 
@@ -126,6 +134,13 @@ is($r3->cat_blob($file1hash, \*TEMPFILE3), 15, "cat_blob(outside): size");
 close TEMPFILE3;
 unlink $tmpfile3;
 chdir($abs_repo_dir);
+
+# unquoting paths
+is(Git::unquote_path('abc'), 'abc', 'unquote unquoted path');
+is(Git::unquote_path('"abc def"'), 'abc def', 'unquote simple quoted path');
+is(Git::unquote_path('"abc\"\\\\ \a\b\t\n\v\f\r\001\040"'),
+		     "abc\"\\ \x07\x08\x09\x0a\x0b\x0c\x0d\x01 ",
+		     'unquote escape sequences');
 
 printf "1..%d\n", Test::More->builder->current_test;
 

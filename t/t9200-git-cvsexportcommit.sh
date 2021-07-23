@@ -5,7 +5,6 @@
 test_description='Test export of commits to CVS'
 
 . ./test-lib.sh
-. "$TEST_DIRECTORY"/lib-prereq-FILEMODE.sh
 
 if ! test_have_prereq PERL; then
 	skip_all='skipping git cvsexportcommit tests, perl not available'
@@ -19,14 +18,20 @@ then
     test_done
 fi
 
-CVSROOT=$(pwd)/cvsroot
-CVSWORK=$(pwd)/cvswork
-GIT_DIR=$(pwd)/.git
+if ! test_have_prereq NOT_ROOT; then
+	skip_all='When cvs is compiled with CVS_BADROOT commits as root fail'
+	test_done
+fi
+
+CVSROOT=$PWD/tmpcvsroot
+CVSWORK=$PWD/cvswork
+GIT_DIR=$PWD/.git
 export CVSROOT CVSWORK GIT_DIR
 
 rm -rf "$CVSROOT" "$CVSWORK"
-mkdir "$CVSROOT" &&
+
 cvs init &&
+test -d "$CVSROOT" &&
 cvs -Q co -d "$CVSWORK" . &&
 echo >empty &&
 git add empty &&
@@ -35,14 +40,14 @@ exit 1
 
 check_entries () {
 	# $1 == directory, $2 == expected
-	grep '^/' "$1/CVS/Entries" | sort | cut -d/ -f2,3,5 >actual
+	sed -ne '/^\//p' "$1/CVS/Entries" | sort | cut -d/ -f2,3,5 >actual
 	if test -z "$2"
 	then
-		>expected
+		test_must_be_empty actual
 	else
 		printf '%s\n' "$2" | tr '|' '\012' >expected
+		test_cmp expected actual
 	fi
-	test_cmp expected actual
 }
 
 test_expect_success \
@@ -182,7 +187,7 @@ test_expect_success \
       git commit -a -m "Update with spaces" &&
       id=$(git rev-list --max-count=1 HEAD) &&
       (cd "$CVSWORK" &&
-      git cvsexportcommit -c $id
+      git cvsexportcommit -c $id &&
       check_entries "G g" "with spaces.png/1.2/-kb|with spaces.txt/1.2/"
       )'
 
@@ -197,7 +202,7 @@ if p="Å/goo/a/b/c/d/e/f/g/h/i/j/k/l/m/n/o/p/q/r/s/t/u/v/w/x/y/z/å/ä/ö" &&
 then
 
 # This test contains UTF-8 characters
-test_expect_success \
+test_expect_success !MINGW \
      'File with non-ascii file name' \
      'mkdir -p Å/goo/a/b/c/d/e/f/g/h/i/j/k/l/m/n/o/p/q/r/s/t/u/v/w/x/y/z/å/ä/ö &&
       echo Foo >Å/goo/a/b/c/d/e/f/g/h/i/j/k/l/m/n/o/p/q/r/s/t/u/v/w/x/y/z/å/ä/ö/gårdetsågårdet.txt &&
@@ -240,7 +245,7 @@ test_expect_success FILEMODE \
       git add G/off &&
       git commit -a -m "Execute test" &&
       (cd "$CVSWORK" &&
-      git cvsexportcommit -c HEAD
+      git cvsexportcommit -c HEAD &&
       test -x G/on &&
       ! test -x G/off
       )'
@@ -298,7 +303,7 @@ test_expect_success 're-commit a removed filename which remains in CVS attic' '
     git add attic_gremlin &&
     git commit -m "Added attic_gremlin" &&
 	git cvsexportcommit -w "$CVSWORK" -c HEAD &&
-    (cd "$CVSWORK"; cvs -Q update -d) &&
+    (cd "$CVSWORK" && cvs -Q update -d) &&
     test -f "$CVSWORK/attic_gremlin"
 '
 
@@ -321,7 +326,7 @@ test_expect_success 'use the same checkout for Git and CVS' '
 
 	(mkdir shared &&
 	 cd shared &&
-	 unset GIT_DIR &&
+	 sane_unset GIT_DIR &&
 	 cvs co . &&
 	 git init &&
 	 git add " space" &&

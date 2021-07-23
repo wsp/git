@@ -2,6 +2,9 @@
 
 test_description='ancestor culling and limiting by parent number'
 
+GIT_TEST_DEFAULT_INITIAL_BRANCH_NAME=main
+export GIT_TEST_DEFAULT_INITIAL_BRANCH_NAME
+
 . ./test-lib.sh
 
 check_revlist () {
@@ -31,8 +34,7 @@ test_expect_success setup '
 test_expect_success 'one is ancestor of others and should not be shown' '
 
 	git rev-list one --not four >result &&
-	>expect &&
-	test_cmp expect result
+	test_must_be_empty result
 
 '
 
@@ -46,8 +48,10 @@ test_expect_success 'setup roots, merges and octopuses' '
 	test_commit seven &&
 	git checkout -b yetanotherbranch four &&
 	test_commit eight &&
-	git checkout master &&
-	test_merge normalmerge newroot &&
+	git checkout main &&
+	test_tick &&
+	git merge --allow-unrelated-histories -m normalmerge newroot &&
+	git tag normalmerge &&
 	test_tick &&
 	git merge -m tripus sidebranch anotherbranch &&
 	git tag tripus &&
@@ -55,7 +59,7 @@ test_expect_success 'setup roots, merges and octopuses' '
 	test_tick &&
 	git merge -m tetrapus sidebranch anotherbranch yetanotherbranch &&
 	git tag tetrapus &&
-	git checkout master
+	git checkout main
 '
 
 test_expect_success 'rev-list roots' '
@@ -122,7 +126,7 @@ test_expect_success 'dodecapus' '
 		roots="$roots root$i" ||
 		return
 	done &&
-	git checkout master &&
+	git checkout main &&
 	test_tick &&
 	git merge -m dodecapus $roots &&
 	git tag dodecapus &&
@@ -133,4 +137,16 @@ test_expect_success 'dodecapus' '
 	check_revlist "--min-parents=13" &&
 	check_revlist "--min-parents=4 --max-parents=11" tetrapus
 '
+
+test_expect_success 'ancestors with the same commit time' '
+
+	test_tick_keep=$test_tick &&
+	for i in 1 2 3 4 5 6 7 8; do
+		test_tick=$test_tick_keep
+		test_commit t$i
+	done &&
+	git rev-list t1^! --not t$i >result &&
+	test_must_be_empty result
+'
+
 test_done

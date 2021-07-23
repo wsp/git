@@ -5,7 +5,11 @@
 
 test_description='fmt-merge-msg test'
 
+GIT_TEST_DEFAULT_INITIAL_BRANCH_NAME=main
+export GIT_TEST_DEFAULT_INITIAL_BRANCH_NAME
+
 . ./test-lib.sh
+. "$TEST_DIRECTORY/lib-gpg.sh"
 
 test_expect_success setup '
 	echo one >one &&
@@ -35,15 +39,18 @@ test_expect_success setup '
 
 	echo "l3" >two &&
 	test_tick &&
-	git commit -a -m "Left #3" &&
+	GIT_COMMITTER_NAME="Another Committer" \
+	GIT_AUTHOR_NAME="Another Author" git commit -a -m "Left #3" &&
 
 	echo "l4" >two &&
 	test_tick &&
-	git commit -a -m "Left #4" &&
+	GIT_COMMITTER_NAME="Another Committer" \
+	GIT_AUTHOR_NAME="Another Author" git commit -a -m "Left #4" &&
 
 	echo "l5" >two &&
 	test_tick &&
-	git commit -a -m "Left #5" &&
+	GIT_COMMITTER_NAME="Another Committer" \
+	GIT_AUTHOR_NAME="Another Author" git commit -a -m "Left #5" &&
 	git tag tag-l5 &&
 
 	git checkout right &&
@@ -63,32 +70,49 @@ test_expect_success setup '
 	git commit -a -m "Right #5" &&
 
 	git checkout -b long &&
-	i=0 &&
-	while test $i -lt 30
-	do
-		test_commit $i one &&
-		i=$(($i+1))
-	done &&
+	test_commit_bulk --start=0 --message=%s --filename=one 30 &&
 
 	git show-branch &&
 
 	apos="'\''"
 '
 
+test_expect_success GPG 'set up a signed tag' '
+	git tag -s -m signed-tag-msg signed-good-tag left
+'
+
 test_expect_success 'message for merging local branch' '
 	echo "Merge branch ${apos}left${apos}" >expected &&
 
-	git checkout master &&
+	git checkout main &&
 	git fetch . left &&
 
 	git fmt-merge-msg <.git/FETCH_HEAD >actual &&
 	test_cmp expected actual
 '
 
+test_expect_success GPG 'message for merging local tag signed by good key' '
+	git checkout main &&
+	git fetch . signed-good-tag &&
+	git fmt-merge-msg <.git/FETCH_HEAD >actual 2>&1 &&
+	grep "^Merge tag ${apos}signed-good-tag${apos}" actual &&
+	grep "^# gpg: Signature made" actual &&
+	grep "^# gpg: Good signature from" actual
+'
+
+test_expect_success GPG 'message for merging local tag signed by unknown key' '
+	git checkout main &&
+	git fetch . signed-good-tag &&
+	GNUPGHOME=. git fmt-merge-msg <.git/FETCH_HEAD >actual 2>&1 &&
+	grep "^Merge tag ${apos}signed-good-tag${apos}" actual &&
+	grep "^# gpg: Signature made" actual &&
+	grep -E "^# gpg: Can${apos}t check signature: (public key not found|No public key)" actual
+'
+
 test_expect_success 'message for merging external branch' '
 	echo "Merge branch ${apos}left${apos} of $(pwd)" >expected &&
 
-	git checkout master &&
+	git checkout main &&
 	git fetch "$(pwd)" left &&
 
 	git fmt-merge-msg <.git/FETCH_HEAD >actual &&
@@ -99,6 +123,8 @@ test_expect_success '[merge] summary/log configuration' '
 	cat >expected <<-EOF &&
 	Merge branch ${apos}left${apos}
 
+	# By Another Author (3) and A U Thor (2)
+	# Via Another Committer
 	* left:
 	  Left #5
 	  Left #4
@@ -107,19 +133,19 @@ test_expect_success '[merge] summary/log configuration' '
 	  Common #1
 	EOF
 
-	git config merge.log true &&
-	test_might_fail git config --unset-all merge.summary &&
+	test_config merge.log true &&
+	test_unconfig merge.summary &&
 
-	git checkout master &&
+	git checkout main &&
 	test_tick &&
 	git fetch . left &&
 
 	git fmt-merge-msg <.git/FETCH_HEAD >actual1 &&
 
-	test_might_fail git config --unset-all merge.log &&
-	git config merge.summary true &&
+	test_unconfig merge.log &&
+	test_config merge.summary true &&
 
-	git checkout master &&
+	git checkout main &&
 	test_tick &&
 	git fetch . left &&
 
@@ -129,13 +155,8 @@ test_expect_success '[merge] summary/log configuration' '
 	test_cmp expected actual2
 '
 
-test_expect_success 'setup: clear [merge] configuration' '
-	test_might_fail git config --unset-all merge.log &&
-	test_might_fail git config --unset-all merge.summary
-'
-
 test_expect_success 'setup FETCH_HEAD' '
-	git checkout master &&
+	git checkout main &&
 	test_tick &&
 	git fetch . left
 '
@@ -144,6 +165,8 @@ test_expect_success 'merge.log=3 limits shortlog length' '
 	cat >expected <<-EOF &&
 	Merge branch ${apos}left${apos}
 
+	# By Another Author (3) and A U Thor (2)
+	# Via Another Committer
 	* left: (5 commits)
 	  Left #5
 	  Left #4
@@ -159,6 +182,8 @@ test_expect_success 'merge.log=5 shows all 5 commits' '
 	cat >expected <<-EOF &&
 	Merge branch ${apos}left${apos}
 
+	# By Another Author (3) and A U Thor (2)
+	# Via Another Committer
 	* left:
 	  Left #5
 	  Left #4
@@ -171,8 +196,26 @@ test_expect_success 'merge.log=5 shows all 5 commits' '
 	test_cmp expected actual
 '
 
+test_expect_success '--log=5 with custom comment character' '
+	cat >expected <<-EOF &&
+	Merge branch ${apos}left${apos}
+
+	x By Another Author (3) and A U Thor (2)
+	x Via Another Committer
+	* left:
+	  Left #5
+	  Left #4
+	  Left #3
+	  Common #2
+	  Common #1
+	EOF
+
+	git -c core.commentchar="x" fmt-merge-msg --log=5 <.git/FETCH_HEAD >actual &&
+	test_cmp expected actual
+'
+
 test_expect_success 'merge.log=0 disables shortlog' '
-	echo "Merge branch ${apos}left${apos}" >expected
+	echo "Merge branch ${apos}left${apos}" >expected &&
 	git -c merge.log=0 fmt-merge-msg <.git/FETCH_HEAD >actual &&
 	test_cmp expected actual
 '
@@ -181,6 +224,8 @@ test_expect_success '--log=3 limits shortlog length' '
 	cat >expected <<-EOF &&
 	Merge branch ${apos}left${apos}
 
+	# By Another Author (3) and A U Thor (2)
+	# Via Another Committer
 	* left: (5 commits)
 	  Left #5
 	  Left #4
@@ -196,6 +241,8 @@ test_expect_success '--log=5 shows all 5 commits' '
 	cat >expected <<-EOF &&
 	Merge branch ${apos}left${apos}
 
+	# By Another Author (3) and A U Thor (2)
+	# Via Another Committer
 	* left:
 	  Left #5
 	  Left #4
@@ -225,6 +272,8 @@ test_expect_success 'fmt-merge-msg -m' '
 	cat >expected.log <<-EOF &&
 	Sync with left
 
+	# By Another Author (3) and A U Thor (2)
+	# Via Another Committer
 	* ${apos}left${apos} of $(pwd):
 	  Left #5
 	  Left #4
@@ -233,14 +282,14 @@ test_expect_success 'fmt-merge-msg -m' '
 	  Common #1
 	EOF
 
-	test_might_fail git config --unset merge.log &&
-	test_might_fail git config --unset merge.summary &&
-	git checkout master &&
+	test_unconfig merge.log &&
+	test_unconfig merge.summary &&
+	git checkout main &&
 	git fetch "$(pwd)" left &&
 	git fmt-merge-msg -m "Sync with left" <.git/FETCH_HEAD >actual &&
 	git fmt-merge-msg --log -m "Sync with left" \
 					<.git/FETCH_HEAD >actual.log &&
-	git config merge.log true &&
+	test_config merge.log true &&
 	git fmt-merge-msg -m "Sync with left" \
 					<.git/FETCH_HEAD >actual.log-config &&
 	git fmt-merge-msg --no-log -m "Sync with left" \
@@ -256,6 +305,8 @@ test_expect_success 'setup: expected shortlog for two branches' '
 	cat >expected <<-EOF
 	Merge branches ${apos}left${apos} and ${apos}right${apos}
 
+	# By Another Author (3) and A U Thor (2)
+	# Via Another Committer
 	* left:
 	  Left #5
 	  Left #4
@@ -273,30 +324,30 @@ test_expect_success 'setup: expected shortlog for two branches' '
 '
 
 test_expect_success 'shortlog for two branches' '
-	git config merge.log true &&
-	test_might_fail git config --unset-all merge.summary &&
-	git checkout master &&
+	test_config merge.log true &&
+	test_unconfig merge.summary &&
+	git checkout main &&
 	test_tick &&
 	git fetch . left right &&
 	git fmt-merge-msg <.git/FETCH_HEAD >actual1 &&
 
-	test_might_fail git config --unset-all merge.log &&
-	git config merge.summary true &&
-	git checkout master &&
+	test_unconfig merge.log &&
+	test_config merge.summary true &&
+	git checkout main &&
 	test_tick &&
 	git fetch . left right &&
 	git fmt-merge-msg <.git/FETCH_HEAD >actual2 &&
 
-	git config merge.log yes &&
-	test_might_fail git config --unset-all merge.summary &&
-	git checkout master &&
+	test_config merge.log yes &&
+	test_unconfig merge.summary &&
+	git checkout main &&
 	test_tick &&
 	git fetch . left right &&
 	git fmt-merge-msg <.git/FETCH_HEAD >actual3 &&
 
-	test_might_fail git config --unset-all merge.log &&
-	git config merge.summary yes &&
-	git checkout master &&
+	test_unconfig merge.log &&
+	test_config merge.summary yes &&
+	git checkout main &&
 	test_tick &&
 	git fetch . left right &&
 	git fmt-merge-msg <.git/FETCH_HEAD >actual4 &&
@@ -308,9 +359,9 @@ test_expect_success 'shortlog for two branches' '
 '
 
 test_expect_success 'merge-msg -F' '
-	test_might_fail git config --unset-all merge.log &&
-	git config merge.summary yes &&
-	git checkout master &&
+	test_unconfig merge.log &&
+	test_config merge.summary yes &&
+	git checkout main &&
 	test_tick &&
 	git fetch . left right &&
 	git fmt-merge-msg -F .git/FETCH_HEAD >actual &&
@@ -318,9 +369,9 @@ test_expect_success 'merge-msg -F' '
 '
 
 test_expect_success 'merge-msg -F in subdirectory' '
-	test_might_fail git config --unset-all merge.log &&
-	git config merge.summary yes &&
-	git checkout master &&
+	test_unconfig merge.log &&
+	test_config merge.summary yes &&
+	git checkout main &&
 	test_tick &&
 	git fetch . left right &&
 	mkdir sub &&
@@ -333,10 +384,8 @@ test_expect_success 'merge-msg -F in subdirectory' '
 '
 
 test_expect_success 'merge-msg with nothing to merge' '
-	test_might_fail git config --unset-all merge.log &&
-	git config merge.summary yes &&
-
-	>empty &&
+	test_unconfig merge.log &&
+	test_config merge.summary yes &&
 
 	(
 		cd remote &&
@@ -346,7 +395,7 @@ test_expect_success 'merge-msg with nothing to merge' '
 		git fmt-merge-msg <.git/FETCH_HEAD >../actual
 	) &&
 
-	test_cmp empty actual
+	test_must_be_empty actual
 '
 
 test_expect_success 'merge-msg tag' '
@@ -359,10 +408,10 @@ test_expect_success 'merge-msg tag' '
 	  Common #1
 	EOF
 
-	test_might_fail git config --unset-all merge.log &&
-	git config merge.summary yes &&
+	test_unconfig merge.log &&
+	test_config merge.summary yes &&
 
-	git checkout master &&
+	git checkout main &&
 	test_tick &&
 	git fetch . tag tag-r3 &&
 
@@ -379,6 +428,8 @@ test_expect_success 'merge-msg two tags' '
 	  Common #2
 	  Common #1
 
+	# By Another Author (3) and A U Thor (2)
+	# Via Another Committer
 	* tag ${apos}tag-l5${apos}:
 	  Left #5
 	  Left #4
@@ -387,10 +438,10 @@ test_expect_success 'merge-msg two tags' '
 	  Common #1
 	EOF
 
-	test_might_fail git config --unset-all merge.log &&
-	git config merge.summary yes &&
+	test_unconfig merge.log &&
+	test_config merge.summary yes &&
 
-	git checkout master &&
+	git checkout main &&
 	test_tick &&
 	git fetch . tag tag-r3 tag tag-l5 &&
 
@@ -407,6 +458,8 @@ test_expect_success 'merge-msg tag and branch' '
 	  Common #2
 	  Common #1
 
+	# By Another Author (3) and A U Thor (2)
+	# Via Another Committer
 	* left:
 	  Left #5
 	  Left #4
@@ -415,10 +468,10 @@ test_expect_success 'merge-msg tag and branch' '
 	  Common #1
 	EOF
 
-	test_might_fail git config --unset-all merge.log &&
-	git config merge.summary yes &&
+	test_unconfig merge.log &&
+	test_config merge.summary yes &&
 
-	git checkout master &&
+	git checkout main &&
 	test_tick &&
 	git fetch . tag tag-r3 left &&
 
@@ -443,12 +496,73 @@ test_expect_success 'merge-msg lots of commits' '
 		echo "  ..."
 	} >expected &&
 
-	git checkout master &&
+	test_config merge.summary yes &&
+
+	git checkout main &&
 	test_tick &&
 	git fetch . long &&
 
 	git fmt-merge-msg <.git/FETCH_HEAD >actual &&
 	test_cmp expected actual
+'
+
+test_expect_success 'merge-msg with "merging" an annotated tag' '
+	test_config merge.log true &&
+
+	git checkout main^0 &&
+	git commit --allow-empty -m "One step ahead" &&
+	git tag -a -m "An annotated one" annote HEAD &&
+
+	git checkout main &&
+	git fetch . annote &&
+
+	git fmt-merge-msg <.git/FETCH_HEAD >actual &&
+	{
+		cat <<-\EOF
+		Merge tag '\''annote'\''
+
+		An annotated one
+
+		* tag '\''annote'\'':
+		  One step ahead
+		EOF
+	} >expected &&
+	test_cmp expected actual &&
+
+	test_when_finished "git reset --hard" &&
+	annote=$(git rev-parse annote) &&
+	git merge --no-commit --no-ff $annote &&
+	{
+		cat <<-EOF
+		Merge tag '\''$annote'\''
+
+		An annotated one
+
+		* tag '\''$annote'\'':
+		  One step ahead
+		EOF
+	} >expected &&
+	test_cmp expected .git/MERGE_MSG
+'
+
+test_expect_success 'merge.suppressDest configuration' '
+	git checkout -B side main &&
+	git commit --allow-empty -m "One step ahead" &&
+	git checkout main &&
+	git fetch . side &&
+
+	git -c merge.suppressDest="" fmt-merge-msg <.git/FETCH_HEAD >full.1 &&
+	head -n1 full.1 >actual &&
+	grep -e "Merge branch .side. into main" actual &&
+
+	git -c merge.suppressDest="mast" fmt-merge-msg <.git/FETCH_HEAD >full.2 &&
+	head -n1 full.2 >actual &&
+	grep -e "Merge branch .side. into main$" actual &&
+
+	git -c merge.suppressDest="ma?*[rn]" fmt-merge-msg <.git/FETCH_HEAD >full.3 &&
+	head -n1 full.3 >actual &&
+	grep -e "Merge branch .side." actual &&
+	! grep -e " into main$" actual
 '
 
 test_done

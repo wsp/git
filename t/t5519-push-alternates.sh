@@ -2,6 +2,9 @@
 
 test_description='push to a repository that borrows from elsewhere'
 
+GIT_TEST_DEFAULT_INITIAL_BRANCH_NAME=main
+export GIT_TEST_DEFAULT_INITIAL_BRANCH_NAME
+
 . ./test-lib.sh
 
 test_expect_success setup '
@@ -17,7 +20,7 @@ test_expect_success setup '
 		>file &&
 		git add . &&
 		git commit -m initial &&
-		git push ../alice-pub master
+		git push ../alice-pub main
 	) &&
 
 	# Project Bob is a fork of project Alice
@@ -31,7 +34,7 @@ test_expect_success setup '
 	git clone alice-pub bob-work &&
 	(
 		cd bob-work &&
-		git push ../bob-pub master
+		git push ../bob-pub main
 	)
 '
 
@@ -40,7 +43,7 @@ test_expect_success 'alice works and pushes' '
 		cd alice-work &&
 		echo more >file &&
 		git commit -a -m second &&
-		git push ../alice-pub
+		git push ../alice-pub :
 	)
 '
 
@@ -54,10 +57,10 @@ test_expect_success 'bob fetches from alice, works and pushes' '
 		# has at her public repository are available to it
 		# via its alternates.
 		cd bob-work &&
-		git pull ../alice-pub master &&
+		git pull ../alice-pub main &&
 		echo more bob >file &&
 		git commit -a -m third &&
-		git push ../bob-pub
+		git push ../bob-pub :
 	) &&
 
 	# Check that the second commit by Alice is not sent
@@ -86,20 +89,20 @@ test_expect_success 'alice works and pushes again' '
 		cd alice-work &&
 		echo more alice >file &&
 		git commit -a -m fourth &&
-		git push ../alice-pub
+		git push ../alice-pub :
 	)
 '
 
 test_expect_success 'bob works and pushes' '
 	(
 		# This time Bob does not pull from Alice, and
-		# the master branch at her public repository points
+		# the main branch at her public repository points
 		# at a commit Bob does not know about.  This should
 		# not prevent the push by Bob from succeeding.
 		cd bob-work &&
 		echo yet more bob >file &&
 		git commit -a -m fifth &&
-		git push ../bob-pub
+		git push ../bob-pub :
 	)
 '
 
@@ -115,18 +118,18 @@ test_expect_success 'alice works and pushes yet again' '
 		git commit -a -m sixth.2 &&
 		echo more and more alice >>file &&
 		git commit -a -m sixth.3 &&
-		git push ../alice-pub
+		git push ../alice-pub :
 	)
 '
 
 test_expect_success 'bob works and pushes again' '
 	(
 		cd alice-pub &&
-		git cat-file commit master >../bob-work/commit
+		git cat-file commit main >../bob-work/commit
 	) &&
 	(
 		# This time Bob does not pull from Alice, and
-		# the master branch at her public repository points
+		# the main branch at her public repository points
 		# at a commit Bob does not fully know about, but
 		# he happens to have the commit object (but not the
 		# necessary tree) in his repository from Alice.
@@ -136,7 +139,7 @@ test_expect_success 'bob works and pushes again' '
 		git hash-object -t commit -w commit &&
 		echo even more bob >file &&
 		git commit -a -m seventh &&
-		git push ../bob-pub
+		git push ../bob-pub :
 	)
 '
 

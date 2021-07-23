@@ -5,7 +5,7 @@ class blame {
 
 image create photo ::blame::img_back_arrow -data {R0lGODlhGAAYAIUAAPwCBEzKXFTSZIz+nGzmhGzqfGTidIT+nEzGXHTqhGzmfGzifFzadETCVES+VARWDFzWbHzyjAReDGTadFTOZDSyRDyyTCymPARaFGTedFzSbDy2TCyqRCyqPARaDAyCHES6VDy6VCyiPAR6HCSeNByWLARyFARiDARqFGTifARiFAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH5BAEAAAAALAAAAAAYABgAAAajQIBwSCwaj8ikcsk0BppJwRPqHEypQwHBis0WDAdEFyBIKBaMAKLBdjQeSkFBYTBAIvgEoS6JmhUTEwIUDQ4VFhcMGEhyCgoZExoUaxsWHB0THkgfAXUGAhoBDSAVFR0XBnCbDRmgog0hpSIiDJpJIyEQhBUcJCIlwA22SSYVogknEg8eD82qSigdDSknY0IqJQXPYxIl1dZCGNvWw+Dm510GQQAh/mhDcmVhdGVkIGJ5IEJNUFRvR0lGIFBybyB2ZXJzaW9uIDIuNQ0KqSBEZXZlbENvciAxOTk3LDE5OTguIEFsbCByaWdodHMgcmVzZXJ2ZWQuDQpodHRwOi8vd3d3LmRldmVsY29yLmNvbQA7}
 
-# Persistant data (survives loads)
+# Persistent data (survives loads)
 #
 field history {}; # viewer history: {commit path}
 field header    ; # array commit,key -> header field
@@ -24,6 +24,7 @@ field w_cviewer  ; # pane showing commit message
 field finder     ; # find mini-dialog frame
 field gotoline   ; # line goto mini-dialog frame
 field status     ; # status mega-widget instance
+field status_operation ; # operation displayed by status mega-widget
 field old_height ; # last known height of $w.file_pane
 
 
@@ -70,7 +71,7 @@ constructor new {i_commit i_path i_jump} {
 	set path   $i_path
 
 	make_toplevel top w
-	wm title $top [append "[appname] ([reponame]): " [mc "File Viewer"]]
+	wm title $top [mc "%s (%s): File Viewer" [appname] [reponame]]
 
 	set font_w [font measure font_diff "0"]
 
@@ -219,7 +220,8 @@ constructor new {i_commit i_path i_jump} {
 	eval grid $w_columns $w.file_pane.out.sby -sticky nsew
 	grid conf \
 		$w.file_pane.out.sbx \
-		-column [expr {[llength $w_columns] - 1}] \
+		-column 0 \
+		-columnspan [expr {[llength $w_columns] + 1}] \
 		-sticky we
 	grid columnconfigure \
 		$w.file_pane.out \
@@ -229,12 +231,14 @@ constructor new {i_commit i_path i_jump} {
 
 	set finder [::searchbar::new \
 		$w.file_pane.out.ff $w_file \
-		-column [expr {[llength $w_columns] - 1}] \
+		-column 0 \
+		-columnspan [expr {[llength $w_columns] + 1}] \
 		]
 
 	set gotoline [::linebar::new \
 		$w.file_pane.out.lf $w_file \
-		-column [expr {[llength $w_columns] - 1}] \
+		-column 0 \
+		-columnspan [expr {[llength $w_columns] + 1}] \
 		]
 
 	set w_cviewer $w.file_pane.cm.t
@@ -271,6 +275,7 @@ constructor new {i_commit i_path i_jump} {
 	pack $w_cviewer -expand 1 -fill both
 
 	set status [::status_bar::new $w.status]
+	set status_operation {}
 
 	menu $w.ctxm -tearoff 0
 	$w.ctxm add command \
@@ -323,6 +328,7 @@ constructor new {i_commit i_path i_jump} {
 		bind $i <Any-Motion>  [cb _show_tooltip $i @%x,%y]
 		bind $i <Any-Enter>   [cb _hide_tooltip]
 		bind $i <Any-Leave>   [cb _hide_tooltip]
+		bind $i <Deactivate>  [cb _hide_tooltip]
 		bind_button3 $i "
 			[cb _hide_tooltip]
 			set cursorX %x
@@ -473,14 +479,7 @@ method _load {jump} {
 	}
 	if {$commit eq {}} {
 		if {$do_textconv ne 0} {
-			# Run textconv with sh -c "..." to allow it to
-			# contain command + arguments. On windows, just
-			# call the filter command.
-			if {![file executable [shellpath]]} {
-				set fd [open |[linsert $textconv end $path] r]
-			} else {
-				set fd [open |[list [shellpath] -c "$textconv \"\$0\"" $path] r]
-			}
+			set fd [open_cmd_pipe $textconv $path]
 		} else {
 			set fd [open $path r]
 		}
@@ -572,7 +571,11 @@ method _read_file {fd jump} {
 	foreach i $w_columns {$i conf -state disabled}
 
 	if {[eof $fd]} {
-		close $fd
+		fconfigure $fd -blocking 1; # enable error reporting on close
+		if {[catch {close $fd} err]} {
+			tk_messageBox -icon error -title [mc Error] \
+				-message $err
+		}
 
 		# If we don't force Tk to update the widgets *right now*
 		# none of our jump commands will cause a change in the UI.
@@ -602,16 +605,23 @@ method _exec_blame {cur_w cur_d options cur_s} {
 	} else {
 		lappend options $commit
 	}
+
+	# We may recurse in from another call to _exec_blame and already have
+	# a status operation.
+	if {$status_operation == {}} {
+		set status_operation [$status start \
+			$cur_s \
+			[mc "lines annotated"]]
+	} else {
+		$status_operation restart $cur_s
+	}
+
 	lappend options -- $path
 	set fd [eval git_read --nice blame $options]
 	fconfigure $fd -blocking 0 -translation lf -encoding utf-8
 	fileevent $fd readable [cb _read_blame $fd $cur_w $cur_d]
 	set current_fd $fd
 	set blame_lines 0
-
-	$status start \
-		$cur_s \
-		[mc "lines annotated"]
 }
 
 method _read_blame {fd cur_w cur_d} {
@@ -806,10 +816,11 @@ method _read_blame {fd cur_w cur_d} {
 				[mc "Loading original location annotations..."]
 		} else {
 			set current_fd {}
-			$status stop [mc "Annotation complete."]
+			$status_operation stop [mc "Annotation complete."]
+			set status_operation {}
 		}
 	} else {
-		$status update $blame_lines $total_lines
+		$status_operation update $blame_lines $total_lines
 	}
 } ifdeleted { catch {close $fd} }
 
@@ -1062,7 +1073,7 @@ method _gitkcommit {} {
 		set radius [get_config gui.blamehistoryctx]
 		set cmdline [list --select-commit=$cmit]
 
-                if {$radius > 0} {
+		if {$radius > 0} {
 			set author_time {}
 			set committer_time {}
 
@@ -1124,7 +1135,7 @@ method _blameparent {} {
 			set diffcmd [list diff-tree --unified=0 $cparent $cmit -- $new_path]
 		}
 		if {[catch {set fd [eval git_read $diffcmd]} err]} {
-			$status stop [mc "Unable to display parent"]
+			$status_operation stop [mc "Unable to display parent"]
 			error_popup [strcat [mc "Error loading diff:"] "\n\n$err"]
 			return
 		}
@@ -1170,7 +1181,7 @@ method _read_diff_load_commit {fd cparent new_path tline} {
 	}
 
 	if {[eof $fd]} {
-		close $fd;
+		close $fd
 		set current_fd {}
 
 		_load_new_commit $this  \
@@ -1201,6 +1212,7 @@ method _open_tooltip {cur_w} {
 		_hide_tooltip $this
 
 		set tooltip_wm [toplevel $cur_w.tooltip -borderwidth 1]
+		catch {wm attributes $tooltip_wm -type tooltip}
 		wm overrideredirect $tooltip_wm 1
 		wm transient $tooltip_wm [winfo toplevel $cur_w]
 		set tooltip_t $tooltip_wm.label

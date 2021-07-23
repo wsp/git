@@ -10,6 +10,9 @@ test_description='test cherry-pick and revert with renames
 
 '
 
+GIT_TEST_DEFAULT_INITIAL_BRANCH_NAME=main
+export GIT_TEST_DEFAULT_INITIAL_BRANCH_NAME
+
 . ./test-lib.sh
 
 test_expect_success setup '
@@ -47,7 +50,7 @@ test_expect_success 'cherry-pick --nonsense' '
 	git diff --exit-code HEAD &&
 	test_must_fail git cherry-pick --nonsense 2>msg &&
 	git diff --exit-code HEAD "$pos" &&
-	grep '[Uu]sage:' msg
+	test_i18ngrep "[Uu]sage:" msg
 '
 
 test_expect_success 'revert --nonsense' '
@@ -56,7 +59,7 @@ test_expect_success 'revert --nonsense' '
 	git diff --exit-code HEAD &&
 	test_must_fail git revert --nonsense 2>msg &&
 	git diff --exit-code HEAD "$pos" &&
-	grep '[Uu]sage:' msg
+	test_i18ngrep "[Uu]sage:" msg
 '
 
 test_expect_success 'cherry-pick after renaming branch' '
@@ -86,7 +89,7 @@ test_expect_success 'cherry-pick on stat-dirty working tree' '
 	(
 		cd copy &&
 		git checkout initial &&
-		test-chmtime +40 oops &&
+		test-tool chmtime +40 oops &&
 		git cherry-pick added
 	)
 '
@@ -96,8 +99,63 @@ test_expect_success 'revert forbidden on dirty working tree' '
 	echo content >extra_file &&
 	git add extra_file &&
 	test_must_fail git revert HEAD 2>errors &&
-	test_i18ngrep "Your local changes would be overwritten by " errors
+	test_i18ngrep "your local changes would be overwritten by " errors
 
+'
+
+test_expect_success 'cherry-pick on unborn branch' '
+	git checkout --orphan unborn &&
+	git rm --cached -r . &&
+	rm -rf * &&
+	git cherry-pick initial &&
+	git diff --quiet initial &&
+	test_cmp_rev ! initial HEAD
+'
+
+test_expect_success 'cherry-pick "-" to pick from previous branch' '
+	git checkout unborn &&
+	test_commit to-pick actual content &&
+	git checkout main &&
+	git cherry-pick - &&
+	echo content >expect &&
+	test_cmp expect actual
+'
+
+test_expect_success 'cherry-pick "-" is meaningless without checkout' '
+	test_create_repo afresh &&
+	(
+		cd afresh &&
+		test_commit one &&
+		test_commit two &&
+		test_commit three &&
+		test_must_fail git cherry-pick -
+	)
+'
+
+test_expect_success 'cherry-pick "-" works with arguments' '
+	git checkout -b side-branch &&
+	test_commit change actual change &&
+	git checkout main &&
+	git cherry-pick -s - &&
+	echo "Signed-off-by: C O Mitter <committer@example.com>" >expect &&
+	git cat-file commit HEAD | grep ^Signed-off-by: >signoff &&
+	test_cmp expect signoff &&
+	echo change >expect &&
+	test_cmp expect actual
+'
+
+test_expect_success 'cherry-pick works with dirty renamed file' '
+	test_commit to-rename &&
+	git checkout -b unrelated &&
+	test_commit unrelated &&
+	git checkout @{-1} &&
+	git mv to-rename.t renamed &&
+	test_tick &&
+	git commit -m renamed &&
+	echo modified >renamed &&
+	git cherry-pick refs/heads/unrelated &&
+	test $(git rev-parse :0:renamed) = $(git rev-parse HEAD~2:to-rename.t) &&
+	grep -q "^modified$" renamed
 '
 
 test_done

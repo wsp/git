@@ -1,5 +1,6 @@
 #include "builtin.h"
 #include "cache.h"
+#include "config.h"
 #include "commit.h"
 #include "diff.h"
 #include "string-list.h"
@@ -8,15 +9,35 @@
 #include "mailmap.h"
 #include "shortlog.h"
 #include "parse-options.h"
+#include "trailer.h"
+#include "strmap.h"
 
 static char const * const shortlog_usage[] = {
-	"git shortlog [-n] [-s] [-e] [-w] [rev-opts] [--] [<commit-id>... ]",
-	"",
-	"[rev-opts] are documented in git-rev-list(1)",
+	N_("git shortlog [<options>] [<revision-range>] [[--] <path>...]"),
+	N_("git log --pretty=short | git shortlog [<options>]"),
 	NULL
 };
 
-static int compare_by_number(const void *a1, const void *a2)
+/*
+ * The util field of our string_list_items will contain one of two things:
+ *
+ *   - if --summary is not in use, it will point to a string list of the
+ *     oneline subjects assigned to this author
+ *
+ *   - if --summary is in use, we don't need that list; we only need to know
+ *     its size. So we abuse the pointer slot to store our integer counter.
+ *
+ *  This macro accesses the latter.
+ */
+#define UTIL_TO_INT(x) ((intptr_t)(x)->util)
+
+static int compare_by_counter(const void *a1, const void *a2)
+{
+	const struct string_list_item *i1 = a1, *i2 = a2;
+	return UTIL_TO_INT(i2) - UTIL_TO_INT(i1);
+}
+
+static int compare_by_list(const void *a1, const void *a2)
 {
 	const struct string_list_item *i1 = a1, *i2 = a2;
 	const struct string_list *l1 = i1->util, *l2 = i2->util;
@@ -30,147 +51,200 @@ static int compare_by_number(const void *a1, const void *a2)
 }
 
 static void insert_one_record(struct shortlog *log,
-			      const char *author,
+			      const char *ident,
 			      const char *oneline)
 {
-	const char *dot3 = log->common_repo_prefix;
-	char *buffer, *p;
 	struct string_list_item *item;
-	char namebuf[1024];
-	char emailbuf[1024];
-	size_t len;
-	const char *eol;
-	const char *boemail, *eoemail;
-	struct strbuf subject = STRBUF_INIT;
 
-	boemail = strchr(author, '<');
-	if (!boemail)
-		return;
-	eoemail = strchr(boemail, '>');
-	if (!eoemail)
-		return;
+	item = string_list_insert(&log->list, ident);
 
-	/* copy author name to namebuf, to support matching on both name and email */
-	memcpy(namebuf, author, boemail - author);
-	len = boemail - author;
-	while (len > 0 && isspace(namebuf[len-1]))
-		len--;
-	namebuf[len] = 0;
+	if (log->summary)
+		item->util = (void *)(UTIL_TO_INT(item) + 1);
+	else {
+		char *buffer;
+		struct strbuf subject = STRBUF_INIT;
+		const char *eol;
 
-	/* copy email name to emailbuf, to allow email replacement as well */
-	memcpy(emailbuf, boemail+1, eoemail - boemail);
-	emailbuf[eoemail - boemail - 1] = 0;
-
-	if (!map_user(&log->mailmap, emailbuf, sizeof(emailbuf), namebuf, sizeof(namebuf))) {
-		while (author < boemail && isspace(*author))
-			author++;
-		for (len = 0;
-		     len < sizeof(namebuf) - 1 && author + len < boemail;
-		     len++)
-			namebuf[len] = author[len];
-		while (0 < len && isspace(namebuf[len-1]))
-			len--;
-		namebuf[len] = '\0';
-	}
-	else
-		len = strlen(namebuf);
-
-	if (log->email) {
-		size_t room = sizeof(namebuf) - len - 1;
-		int maillen = strlen(emailbuf);
-		snprintf(namebuf + len, room, " <%.*s>", maillen, emailbuf);
-	}
-
-	item = string_list_insert(&log->list, namebuf);
-	if (item->util == NULL)
-		item->util = xcalloc(1, sizeof(struct string_list));
-
-	/* Skip any leading whitespace, including any blank lines. */
-	while (*oneline && isspace(*oneline))
-		oneline++;
-	eol = strchr(oneline, '\n');
-	if (!eol)
-		eol = oneline + strlen(oneline);
-	if (!prefixcmp(oneline, "[PATCH")) {
-		char *eob = strchr(oneline, ']');
-		if (eob && (!eol || eob < eol))
-			oneline = eob + 1;
-	}
-	while (*oneline && isspace(*oneline) && *oneline != '\n')
-		oneline++;
-	format_subject(&subject, oneline, " ");
-	buffer = strbuf_detach(&subject, NULL);
-
-	if (dot3) {
-		int dot3len = strlen(dot3);
-		if (dot3len > 5) {
-			while ((p = strstr(buffer, dot3)) != NULL) {
-				int taillen = strlen(p) - dot3len;
-				memcpy(p, "/.../", 5);
-				memmove(p + 5, p + dot3len, taillen + 1);
-			}
+		/* Skip any leading whitespace, including any blank lines. */
+		while (*oneline && isspace(*oneline))
+			oneline++;
+		eol = strchr(oneline, '\n');
+		if (!eol)
+			eol = oneline + strlen(oneline);
+		if (starts_with(oneline, "[PATCH")) {
+			char *eob = strchr(oneline, ']');
+			if (eob && (!eol || eob < eol))
+				oneline = eob + 1;
 		}
-	}
+		while (*oneline && isspace(*oneline) && *oneline != '\n')
+			oneline++;
+		format_subject(&subject, oneline, " ");
+		buffer = strbuf_detach(&subject, NULL);
 
-	string_list_append(item->util, buffer);
+		if (item->util == NULL)
+			item->util = xcalloc(1, sizeof(struct string_list));
+		string_list_append(item->util, buffer);
+	}
+}
+
+static int parse_ident(struct shortlog *log,
+		       struct strbuf *out, const char *in)
+{
+	const char *mailbuf, *namebuf;
+	size_t namelen, maillen;
+	struct ident_split ident;
+
+	if (split_ident_line(&ident, in, strlen(in)))
+		return -1;
+
+	namebuf = ident.name_begin;
+	mailbuf = ident.mail_begin;
+	namelen = ident.name_end - ident.name_begin;
+	maillen = ident.mail_end - ident.mail_begin;
+
+	map_user(&log->mailmap, &mailbuf, &maillen, &namebuf, &namelen);
+	strbuf_add(out, namebuf, namelen);
+	if (log->email)
+		strbuf_addf(out, " <%.*s>", (int)maillen, mailbuf);
+
+	return 0;
 }
 
 static void read_from_stdin(struct shortlog *log)
 {
-	char author[1024], oneline[1024];
+	struct strbuf ident = STRBUF_INIT;
+	struct strbuf mapped_ident = STRBUF_INIT;
+	struct strbuf oneline = STRBUF_INIT;
+	static const char *author_match[2] = { "Author: ", "author " };
+	static const char *committer_match[2] = { "Commit: ", "committer " };
+	const char **match;
 
-	while (fgets(author, sizeof(author), stdin) != NULL) {
-		if (!(author[0] == 'A' || author[0] == 'a') ||
-		    prefixcmp(author + 1, "uthor: "))
-			continue;
-		while (fgets(oneline, sizeof(oneline), stdin) &&
-		       oneline[0] != '\n')
-			; /* discard headers */
-		while (fgets(oneline, sizeof(oneline), stdin) &&
-		       oneline[0] == '\n')
-			; /* discard blanks */
-		insert_one_record(log, author + 8, oneline);
+	if (HAS_MULTI_BITS(log->groups))
+		die(_("using multiple --group options with stdin is not supported"));
+
+	switch (log->groups) {
+	case SHORTLOG_GROUP_AUTHOR:
+		match = author_match;
+		break;
+	case SHORTLOG_GROUP_COMMITTER:
+		match = committer_match;
+		break;
+	case SHORTLOG_GROUP_TRAILER:
+		die(_("using --group=trailer with stdin is not supported"));
+	default:
+		BUG("unhandled shortlog group");
 	}
+
+	while (strbuf_getline_lf(&ident, stdin) != EOF) {
+		const char *v;
+		if (!skip_prefix(ident.buf, match[0], &v) &&
+		    !skip_prefix(ident.buf, match[1], &v))
+			continue;
+		while (strbuf_getline_lf(&oneline, stdin) != EOF &&
+		       oneline.len)
+			; /* discard headers */
+		while (strbuf_getline_lf(&oneline, stdin) != EOF &&
+		       !oneline.len)
+			; /* discard blanks */
+
+		strbuf_reset(&mapped_ident);
+		if (parse_ident(log, &mapped_ident, v) < 0)
+			continue;
+
+		insert_one_record(log, mapped_ident.buf, oneline.buf);
+	}
+	strbuf_release(&ident);
+	strbuf_release(&mapped_ident);
+	strbuf_release(&oneline);
+}
+
+static void insert_records_from_trailers(struct shortlog *log,
+					 struct strset *dups,
+					 struct commit *commit,
+					 struct pretty_print_context *ctx,
+					 const char *oneline)
+{
+	struct trailer_iterator iter;
+	const char *commit_buffer, *body;
+	struct strbuf ident = STRBUF_INIT;
+
+	/*
+	 * Using format_commit_message("%B") would be simpler here, but
+	 * this saves us copying the message.
+	 */
+	commit_buffer = logmsg_reencode(commit, NULL, ctx->output_encoding);
+	body = strstr(commit_buffer, "\n\n");
+	if (!body)
+		return;
+
+	trailer_iterator_init(&iter, body);
+	while (trailer_iterator_advance(&iter)) {
+		const char *value = iter.val.buf;
+
+		if (!string_list_has_string(&log->trailers, iter.key.buf))
+			continue;
+
+		strbuf_reset(&ident);
+		if (!parse_ident(log, &ident, value))
+			value = ident.buf;
+
+		if (!strset_add(dups, value))
+			continue;
+		insert_one_record(log, value, oneline);
+	}
+	trailer_iterator_release(&iter);
+
+	strbuf_release(&ident);
+	unuse_commit_buffer(commit, commit_buffer);
 }
 
 void shortlog_add_commit(struct shortlog *log, struct commit *commit)
 {
-	const char *author = NULL, *buffer;
-	struct strbuf buf = STRBUF_INIT;
-	struct strbuf ufbuf = STRBUF_INIT;
+	struct strbuf ident = STRBUF_INIT;
+	struct strbuf oneline = STRBUF_INIT;
+	struct strset dups = STRSET_INIT;
+	struct pretty_print_context ctx = {0};
+	const char *oneline_str;
 
-	pp_commit_easy(CMIT_FMT_RAW, commit, &buf);
-	buffer = buf.buf;
-	while (*buffer && *buffer != '\n') {
-		const char *eol = strchr(buffer, '\n');
+	ctx.fmt = CMIT_FMT_USERFORMAT;
+	ctx.abbrev = log->abbrev;
+	ctx.print_email_subject = 1;
+	ctx.date_mode.type = DATE_NORMAL;
+	ctx.output_encoding = get_log_output_encoding();
 
-		if (eol == NULL)
-			eol = buffer + strlen(buffer);
+	if (!log->summary) {
+		if (log->user_format)
+			pretty_print_commit(&ctx, commit, &oneline);
 		else
-			eol++;
+			format_commit_message(commit, "%s", &oneline, &ctx);
+	}
+	oneline_str = oneline.len ? oneline.buf : "<none>";
 
-		if (!prefixcmp(buffer, "author "))
-			author = buffer + 7;
-		buffer = eol;
+	if (log->groups & SHORTLOG_GROUP_AUTHOR) {
+		strbuf_reset(&ident);
+		format_commit_message(commit,
+				      log->email ? "%aN <%aE>" : "%aN",
+				      &ident, &ctx);
+		if (!HAS_MULTI_BITS(log->groups) ||
+		    strset_add(&dups, ident.buf))
+			insert_one_record(log, ident.buf, oneline_str);
 	}
-	if (!author)
-		die(_("Missing author: %s"),
-		    sha1_to_hex(commit->object.sha1));
-	if (log->user_format) {
-		struct pretty_print_context ctx = {0};
-		ctx.fmt = CMIT_FMT_USERFORMAT;
-		ctx.abbrev = log->abbrev;
-		ctx.subject = "";
-		ctx.after_subject = "";
-		ctx.date_mode = DATE_NORMAL;
-		pretty_print_commit(&ctx, commit, &ufbuf);
-		buffer = ufbuf.buf;
-	} else if (*buffer) {
-		buffer++;
+	if (log->groups & SHORTLOG_GROUP_COMMITTER) {
+		strbuf_reset(&ident);
+		format_commit_message(commit,
+				      log->email ? "%cN <%cE>" : "%cN",
+				      &ident, &ctx);
+		if (!HAS_MULTI_BITS(log->groups) ||
+		    strset_add(&dups, ident.buf))
+			insert_one_record(log, ident.buf, oneline_str);
 	}
-	insert_one_record(log, author, !*buffer ? "<none>" : buffer);
-	strbuf_release(&ufbuf);
-	strbuf_release(&buf);
+	if (log->groups & SHORTLOG_GROUP_TRAILER) {
+		insert_records_from_trailers(log, &dups, commit, &ctx, oneline_str);
+	}
+
+	strset_clear(&dups);
+	strbuf_release(&ident);
+	strbuf_release(&oneline);
 }
 
 static void get_from_rev(struct rev_info *rev, struct shortlog *log)
@@ -230,33 +304,63 @@ static int parse_wrap_args(const struct option *opt, const char *arg, int unset)
 	return 0;
 }
 
+static int parse_group_option(const struct option *opt, const char *arg, int unset)
+{
+	struct shortlog *log = opt->value;
+	const char *field;
+
+	if (unset) {
+		log->groups = 0;
+		string_list_clear(&log->trailers, 0);
+	} else if (!strcasecmp(arg, "author"))
+		log->groups |= SHORTLOG_GROUP_AUTHOR;
+	else if (!strcasecmp(arg, "committer"))
+		log->groups |= SHORTLOG_GROUP_COMMITTER;
+	else if (skip_prefix(arg, "trailer:", &field)) {
+		log->groups |= SHORTLOG_GROUP_TRAILER;
+		string_list_append(&log->trailers, field);
+	} else
+		return error(_("unknown group type: %s"), arg);
+
+	return 0;
+}
+
+
 void shortlog_init(struct shortlog *log)
 {
 	memset(log, 0, sizeof(*log));
 
-	read_mailmap(&log->mailmap, &log->common_repo_prefix);
+	read_mailmap(&log->mailmap);
 
 	log->list.strdup_strings = 1;
 	log->wrap = DEFAULT_WRAPLEN;
 	log->in1 = DEFAULT_INDENT1;
 	log->in2 = DEFAULT_INDENT2;
+	log->trailers.strdup_strings = 1;
+	log->trailers.cmp = strcasecmp;
 }
 
 int cmd_shortlog(int argc, const char **argv, const char *prefix)
 {
-	static struct shortlog log;
-	static struct rev_info rev;
+	struct shortlog log = { STRING_LIST_INIT_NODUP };
+	struct rev_info rev;
 	int nongit = !startup_info->have_repository;
 
-	static const struct option options[] = {
-		OPT_BOOLEAN('n', "numbered", &log.sort_by_number,
-			    "sort output according to the number of commits per author"),
-		OPT_BOOLEAN('s', "summary", &log.summary,
-			    "Suppress commit descriptions, only provides commit count"),
-		OPT_BOOLEAN('e', "email", &log.email,
-			    "Show the email address of each author"),
-		{ OPTION_CALLBACK, 'w', NULL, &log, "w[,i1[,i2]]",
-			"Linewrap output", PARSE_OPT_OPTARG, &parse_wrap_args },
+	const struct option options[] = {
+		OPT_BIT('c', "committer", &log.groups,
+			N_("group by committer rather than author"),
+			SHORTLOG_GROUP_COMMITTER),
+		OPT_BOOL('n', "numbered", &log.sort_by_number,
+			 N_("sort output according to the number of commits per author")),
+		OPT_BOOL('s', "summary", &log.summary,
+			 N_("suppress commit descriptions, only provides commit count")),
+		OPT_BOOL('e', "email", &log.email,
+			 N_("show the email address of each author")),
+		OPT_CALLBACK_F('w', NULL, &log, N_("<w>[,<i1>[,<i2>]]"),
+			N_("linewrap output"), PARSE_OPT_OPTARG,
+			&parse_wrap_args),
+		OPT_CALLBACK(0, "group", &log, N_("field"),
+			N_("group by field"), parse_group_option),
 		OPT_END(),
 	};
 
@@ -264,14 +368,17 @@ int cmd_shortlog(int argc, const char **argv, const char *prefix)
 
 	git_config(git_default_config, NULL);
 	shortlog_init(&log);
-	init_revisions(&rev, prefix);
+	repo_init_revisions(the_repository, &rev, prefix);
 	parse_options_start(&ctx, argc, argv, prefix, options,
 			    PARSE_OPT_KEEP_DASHDASH | PARSE_OPT_KEEP_ARGV0);
 
 	for (;;) {
 		switch (parse_options_step(&ctx, options, shortlog_usage)) {
 		case PARSE_OPT_HELP:
+		case PARSE_OPT_ERROR:
 			exit(129);
+		case PARSE_OPT_COMPLETE:
+			exit(0);
 		case PARSE_OPT_DONE:
 			goto parse_done;
 		}
@@ -280,6 +387,11 @@ int cmd_shortlog(int argc, const char **argv, const char *prefix)
 parse_done:
 	argc = parse_options_end(&ctx);
 
+	if (nongit && argc > 1) {
+		error(_("too many arguments given outside repository"));
+		usage_with_options(shortlog_usage, options);
+	}
+
 	if (setup_revisions(argc, argv, &rev, NULL) != 1) {
 		error(_("unrecognized argument: %s"), argv[1]);
 		usage_with_options(shortlog_usage, options);
@@ -287,6 +399,11 @@ parse_done:
 
 	log.user_format = rev.commit_format == CMIT_FMT_USERFORMAT;
 	log.abbrev = rev.abbrev;
+	log.file = rev.diffopt.file;
+
+	if (!log.groups)
+		log.groups = SHORTLOG_GROUP_AUTHOR;
+	string_list_sort(&log.trailers);
 
 	/* assume HEAD if from a tty */
 	if (!nongit && !rev.pending.nr && isatty(0))
@@ -300,15 +417,16 @@ parse_done:
 		get_from_rev(&rev, &log);
 
 	shortlog_output(&log);
+	if (log.file != stdout)
+		fclose(log.file);
 	return 0;
 }
 
 static void add_wrapped_shortlog_msg(struct strbuf *sb, const char *s,
 				     const struct shortlog *log)
 {
-	int col = strbuf_add_wrapped_text(sb, s, log->in1, log->in2, log->wrap);
-	if (col != log->wrap)
-		strbuf_addch(sb, '\n');
+	strbuf_add_wrapped_text(sb, s, log->in1, log->in2, log->wrap);
+	strbuf_addch(sb, '\n');
 }
 
 void shortlog_output(struct shortlog *log)
@@ -317,32 +435,34 @@ void shortlog_output(struct shortlog *log)
 	struct strbuf sb = STRBUF_INIT;
 
 	if (log->sort_by_number)
-		qsort(log->list.items, log->list.nr, sizeof(struct string_list_item),
-			compare_by_number);
+		QSORT(log->list.items, log->list.nr,
+		      log->summary ? compare_by_counter : compare_by_list);
 	for (i = 0; i < log->list.nr; i++) {
-		struct string_list *onelines = log->list.items[i].util;
-
+		const struct string_list_item *item = &log->list.items[i];
 		if (log->summary) {
-			printf("%6d\t%s\n", onelines->nr, log->list.items[i].string);
+			fprintf(log->file, "%6d\t%s\n",
+				(int)UTIL_TO_INT(item), item->string);
 		} else {
-			printf("%s (%d):\n", log->list.items[i].string, onelines->nr);
+			struct string_list *onelines = item->util;
+			fprintf(log->file, "%s (%d):\n",
+				item->string, onelines->nr);
 			for (j = onelines->nr - 1; j >= 0; j--) {
 				const char *msg = onelines->items[j].string;
 
 				if (log->wrap_lines) {
 					strbuf_reset(&sb);
 					add_wrapped_shortlog_msg(&sb, msg, log);
-					fwrite(sb.buf, sb.len, 1, stdout);
+					fwrite(sb.buf, sb.len, 1, log->file);
 				}
 				else
-					printf("      %s\n", msg);
+					fprintf(log->file, "      %s\n", msg);
 			}
-			putchar('\n');
+			putc('\n', log->file);
+			onelines->strdup_strings = 1;
+			string_list_clear(onelines, 0);
+			free(onelines);
 		}
 
-		onelines->strdup_strings = 1;
-		string_list_clear(onelines, 0);
-		free(onelines);
 		log->list.items[i].util = NULL;
 	}
 

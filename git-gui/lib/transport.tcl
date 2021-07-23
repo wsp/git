@@ -124,6 +124,7 @@ proc do_push_anywhere {} {
 
 	set w .push_setup
 	toplevel $w
+	catch {wm attributes $w -type dialog}
 	wm withdraw $w
 	wm geometry $w "+[winfo rootx .]+[winfo rooty .]"
 	pave_toplevel $w
@@ -225,7 +226,7 @@ proc do_push_anywhere {} {
 	bind $w <Visibility> "grab $w; focus $w.buttons.create"
 	bind $w <Key-Escape> "destroy $w"
 	bind $w <Key-Return> [list start_push_anywhere_action $w]
-	wm title $w [append "[appname] ([reponame]): " [mc "Push"]]
+	wm title $w [mc "%s (%s): Push" [appname] [reponame]]
 	wm deiconify $w
 	tkwait window $w
 }

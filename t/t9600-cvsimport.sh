@@ -1,7 +1,15 @@
 #!/bin/sh
 
 test_description='git cvsimport basic tests'
+GIT_TEST_DEFAULT_INITIAL_BRANCH_NAME=main
+export GIT_TEST_DEFAULT_INITIAL_BRANCH_NAME
+
 . ./lib-cvs.sh
+
+if ! test_have_prereq NOT_ROOT; then
+	skip_all='When cvs is compiled with CVS_BADROOT commits as root fail'
+	test_done
+fi
 
 test_expect_success PERL 'setup cvsroot environment' '
 	CVSROOT=$(pwd)/cvsroot &&
@@ -130,7 +138,7 @@ test_expect_success PERL 'second update has correct .git/cvs-revisions' '
 
 	(cd module-git &&
 	 git log --format="o_fortuna 1.1 %H" -1 HEAD^^ &&
-	 git log --format="o_fortuna 1.2 %H" -1 HEAD^
+	 git log --format="o_fortuna 1.2 %H" -1 HEAD^ &&
 	 git log --format="tick 1.1 %H" -1 HEAD) > expected &&
 	test_cmp expected module-git/.git/cvs-revisions
 '
@@ -143,7 +151,7 @@ test_expect_success PERL 'import from a CVS working tree' '
 		git cvsimport -a -z0 &&
 		echo 1 >expect &&
 		git log -1 --pretty=format:%s%n >actual &&
-		test_cmp actual expect
+		test_cmp expect actual
 	)
 
 '
@@ -154,6 +162,6 @@ test_expect_success PERL 'no .git/cvs-revisions created by default' '
 
 '
 
-test_expect_success PERL 'test entire HEAD' 'test_cmp_branch_tree master'
+test_expect_success PERL 'test entire HEAD' 'test_cmp_branch_tree main'
 
 test_done

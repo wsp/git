@@ -1,4 +1,4 @@
-#!/bin/sh
+# Shell library sourced instead of ./test-lib.sh by cvsimport tests.
 
 . ./test-lib.sh
 
@@ -13,7 +13,7 @@ fi
 CVS="cvs -f"
 export CVS
 
-cvsps_version=`cvsps -h 2>&1 | sed -ne 's/cvsps version //p'`
+cvsps_version=$(cvsps -h 2>&1 | sed -ne 's/cvsps version //p')
 case "$cvsps_version" in
 2.1 | 2.2*)
 	;;
@@ -36,7 +36,7 @@ setup_cvs_test_repository () {
 test_cvs_co () {
 	# Usage: test_cvs_co BRANCH_NAME
 	rm -rf module-cvs-"$1"
-	if [ "$1" = "master" ]
+	if [ "$1" = "main" ]
 	then
 		$CVS co -P -d module-cvs-"$1" -A module
 	else

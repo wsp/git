@@ -59,7 +59,7 @@ proc merge_add_resolution {path} {
 	update_index \
 		[mc "Adding resolution for %s" [short_path $path]] \
 		[list $path] \
-		[concat $after [list ui_ready]]
+		[concat $after {ui_ready;}]
 }
 
 proc merge_force_stage {stage} {
@@ -189,9 +189,9 @@ proc merge_resolve_tool2 {} {
 	}
 	bc3 {
 		if {$base_stage ne {}} {
-			set cmdline [list "$merge_tool_path" "$LOCAL" "$REMOTE" "$BASE" -mergeoutput="$MERGED"]
+			set cmdline [list "$merge_tool_path" "$LOCAL" "$REMOTE" "$BASE" "-mergeoutput=$MERGED"]
 		} else {
-			set cmdline [list "$merge_tool_path" "$LOCAL" "$REMOTE" -mergeoutput="$MERGED"]
+			set cmdline [list "$merge_tool_path" "$LOCAL" "$REMOTE" "-mergeoutput=$MERGED"]
 		}
 	}
 	ecmerge {

@@ -2,7 +2,16 @@
 
 test_description='Test workflows involving pull request.'
 
+GIT_TEST_DEFAULT_INITIAL_BRANCH_NAME=main
+export GIT_TEST_DEFAULT_INITIAL_BRANCH_NAME
+
 . ./test-lib.sh
+
+if ! test_have_prereq PERL
+then
+	skip_all='skipping request-pull tests, perl not available'
+	test_done
+fi
 
 test_expect_success 'setup' '
 
@@ -25,13 +34,13 @@ test_expect_success 'setup' '
 		test_tick &&
 		git commit -m "\"Thirty days\", a reminder of month lengths" &&
 		git tag -m "version 1" -a initial &&
-		git push --tags origin master
+		git push --tags origin main
 	) &&
 	(
 		cd local &&
 		git remote add upstream "$trash_url/upstream.git" &&
 		git fetch upstream &&
-		git pull upstream master &&
+		git pull upstream main &&
 		cat <<-\EOT >>mnemonic.txt &&
 		Of twyecescore-eightt is but eine,
 		And all the remnante be thrycescore-eine.
@@ -53,7 +62,7 @@ test_expect_success 'setup' '
 		git commit -a -m "Adapt to use modern, simpler English
 
 But keep the old version, too, in case some people prefer it." &&
-		git checkout master
+		git checkout main
 	)
 
 '
@@ -67,9 +76,11 @@ test_expect_success 'setup: two scripts for reading pull requests' '
 
 	cat <<-\EOT >read-request.sed &&
 	#!/bin/sed -nf
-	/ in the git repository at:$/!d
+	# Note that a request could ask for "tag $tagname"
+	/ in the Git repository at:$/!d
 	n
 	/^$/ n
+	s/ tag \([^ ]*\)$/ tag--\1/
 	s/^[ 	]*\(.*\) \([^ ]*\)/please pull\
 	\1\
 	\2/p
@@ -78,21 +89,22 @@ test_expect_success 'setup: two scripts for reading pull requests' '
 
 	cat <<-EOT >fuzz.sed
 	#!/bin/sed -nf
-	s/$_x40/OBJECT_NAME/g
+	s/$downstream_url_for_sed/URL/g
+	s/$OID_REGEX/OBJECT_NAME/g
 	s/A U Thor/AUTHOR/g
 	s/[-0-9]\{10\} [:0-9]\{8\} [-+][0-9]\{4\}/DATE/g
 	s/        [^ ].*/        SUBJECT/g
 	s/  [^ ].* (DATE)/  SUBJECT (DATE)/g
-	s/$downstream_url_for_sed/URL/g
-	s/for-upstream/BRANCH/g
+	s|tags/full|BRANCH|g
 	s/mnemonic.txt/FILENAME/g
+	s/^version [0-9]/VERSION/
 	/^ FILENAME | *[0-9]* [-+]*\$/ b diffstat
 	/^AUTHOR ([0-9]*):\$/ b shortlog
 	p
 	b
 	: diffstat
 	n
-	/ [0-9]* files changed/ {
+	/ [0-9]* files* changed/ {
 		a\\
 	DIFFSTAT
 		b
@@ -120,11 +132,11 @@ test_expect_success 'pull request when forgot to push' '
 	(
 		cd local &&
 		git checkout initial &&
-		git merge --ff-only master &&
+		git merge --ff-only main &&
 		test_must_fail git request-pull initial "$downstream_url" \
 			2>../err
 	) &&
-	grep "No branch of.*is at:\$" err &&
+	grep "No match for commit .*" err &&
 	grep "Are you sure you pushed" err
 
 '
@@ -136,12 +148,11 @@ test_expect_success 'pull request after push' '
 	(
 		cd local &&
 		git checkout initial &&
-		git merge --ff-only master &&
-		git push origin master:for-upstream &&
-		git request-pull initial origin >../request
+		git merge --ff-only main &&
+		git push origin main:for-upstream &&
+		git request-pull initial origin main:for-upstream >../request
 	) &&
 	sed -nf read-request.sed <request >digest &&
-	cat digest &&
 	{
 		read task &&
 		read repository &&
@@ -157,29 +168,25 @@ test_expect_success 'pull request after push' '
 
 '
 
-test_expect_success 'request names an appropriate branch' '
+test_expect_success 'request asks HEAD to be pulled' '
 
 	rm -fr downstream.git &&
 	git init --bare downstream.git &&
 	(
 		cd local &&
 		git checkout initial &&
-		git merge --ff-only master &&
-		git push --tags origin master simplify &&
-		git push origin master:for-upstream &&
+		git merge --ff-only main &&
+		git push --tags origin main simplify &&
+		git push origin main:for-upstream &&
 		git request-pull initial "$downstream_url" >../request
 	) &&
 	sed -nf read-request.sed <request >digest &&
-	cat digest &&
 	{
 		read task &&
 		read repository &&
 		read branch
 	} <digest &&
-	{
-		test "$branch" = master ||
-		test "$branch" = for-upstream
-	}
+	test -z "$branch"
 
 '
 
@@ -192,9 +199,18 @@ test_expect_success 'pull request format' '
 
 	  SUBJECT (DATE)
 
-	are available in the git repository at:
+	are available in the Git repository at:
+
 	  URL BRANCH
 
+	for you to fetch changes up to OBJECT_NAME:
+
+	  SUBJECT (DATE)
+
+	----------------------------------------------------------------
+	VERSION
+
+	----------------------------------------------------------------
 	SHORTLOG
 
 	DIFFSTAT
@@ -202,13 +218,25 @@ test_expect_success 'pull request format' '
 	(
 		cd local &&
 		git checkout initial &&
-		git merge --ff-only master &&
-		git push origin master:for-upstream &&
-		git request-pull initial "$downstream_url" >../request
+		git merge --ff-only main &&
+		git push origin tags/full &&
+		git request-pull initial "$downstream_url" tags/full >../request
 	) &&
 	<request sed -nf fuzz.sed >request.fuzzy &&
-	test_cmp expect request.fuzzy
+	test_cmp expect request.fuzzy &&
 
+	(
+		cd local &&
+		git request-pull initial "$downstream_url" tags/full:refs/tags/full
+	) >request &&
+	sed -nf fuzz.sed <request >request.fuzzy &&
+	test_cmp expect request.fuzzy &&
+
+	(
+		cd local &&
+		git request-pull initial "$downstream_url" full
+	) >request &&
+	grep " tags/full\$" request
 '
 
 test_expect_success 'request-pull ignores OPTIONS_KEEPDASHDASH poison' '
@@ -218,10 +246,63 @@ test_expect_success 'request-pull ignores OPTIONS_KEEPDASHDASH poison' '
 		OPTIONS_KEEPDASHDASH=Yes &&
 		export OPTIONS_KEEPDASHDASH &&
 		git checkout initial &&
-		git merge --ff-only master &&
-		git push origin master:for-upstream &&
-		git request-pull -- initial "$downstream_url" >../request
+		git merge --ff-only main &&
+		git push origin main:for-upstream &&
+		git request-pull -- initial "$downstream_url" main:for-upstream >../request
 	)
+
+'
+
+test_expect_success 'request-pull quotes regex metacharacters properly' '
+
+	rm -fr downstream.git &&
+	git init --bare downstream.git &&
+	(
+		cd local &&
+		git checkout initial &&
+		git merge --ff-only main &&
+		git tag -mrelease v2.0 &&
+		git push origin refs/tags/v2.0:refs/tags/v2-0 &&
+		test_must_fail git request-pull initial "$downstream_url" tags/v2.0 \
+			2>../err
+	) &&
+	grep "No match for commit .*" err &&
+	grep "Are you sure you pushed" err
+
+'
+
+test_expect_success 'pull request with mismatched object' '
+
+	rm -fr downstream.git &&
+	git init --bare downstream.git &&
+	(
+		cd local &&
+		git checkout initial &&
+		git merge --ff-only main &&
+		git push origin HEAD:refs/tags/full &&
+		test_must_fail git request-pull initial "$downstream_url" tags/full \
+			2>../err
+	) &&
+	grep "points to a different object" err &&
+	grep "Are you sure you pushed" err
+
+'
+
+test_expect_success 'pull request with stale object' '
+
+	rm -fr downstream.git &&
+	git init --bare downstream.git &&
+	(
+		cd local &&
+		git checkout initial &&
+		git merge --ff-only main &&
+		git push origin refs/tags/full &&
+		git tag -f -m"Thirty-one days" full &&
+		test_must_fail git request-pull initial "$downstream_url" tags/full \
+			2>../err
+	) &&
+	grep "points to a different object" err &&
+	grep "Are you sure you pushed" err
 
 '
 

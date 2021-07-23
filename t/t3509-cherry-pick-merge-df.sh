@@ -1,6 +1,9 @@
 #!/bin/sh
 
 test_description='Test cherry-pick with directory/file conflicts'
+GIT_TEST_DEFAULT_INITIAL_BRANCH_NAME=main
+export GIT_TEST_DEFAULT_INITIAL_BRANCH_NAME
+
 . ./test-lib.sh
 
 test_expect_success 'Initialize repository' '
@@ -10,17 +13,15 @@ test_expect_success 'Initialize repository' '
 	git commit -m a
 '
 
-test_expect_success SYMLINKS 'Setup rename across paths each below D/F conflicts' '
+test_expect_success 'Setup rename across paths each below D/F conflicts' '
 	mkdir b &&
-	ln -s ../a b/a &&
-	git add b &&
+	test_ln_s_add ../a b/a &&
 	git commit -m b &&
 
 	git checkout -b branch &&
 	rm b/a &&
-	mv a b/a &&
-	ln -s b/a a &&
-	git add . &&
+	git mv a b/a &&
+	test_ln_s_add b/a a &&
 	git commit -m swap &&
 
 	>f1 &&
@@ -28,9 +29,9 @@ test_expect_success SYMLINKS 'Setup rename across paths each below D/F conflicts
 	git commit -m f1
 '
 
-test_expect_success SYMLINKS 'Cherry-pick succeeds with rename across D/F conflicts' '
+test_expect_success 'Cherry-pick succeeds with rename across D/F conflicts' '
 	git reset --hard &&
-	git checkout master^0 &&
+	git checkout main^0 &&
 	git cherry-pick branch
 '
 
@@ -76,7 +77,7 @@ test_expect_success 'Setup rename with file on one side matching different dirna
 	echo content > sub/file &&
 	echo foo > othersub/whatever &&
 	git add -A &&
-	git commit -m "Common commmit" &&
+	git commit -m "Common commit" &&
 
 	git rm -rf othersub &&
 	git mv sub/file othersub &&

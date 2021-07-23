@@ -2,18 +2,17 @@
 
 test_description='test cherry-picking many commits'
 
+GIT_TEST_DEFAULT_INITIAL_BRANCH_NAME=main
+export GIT_TEST_DEFAULT_INITIAL_BRANCH_NAME
+
 . ./test-lib.sh
 
 check_head_differs_from() {
-	head=$(git rev-parse --verify HEAD) &&
-	arg=$(git rev-parse --verify "$1") &&
-	test "$head" != "$arg"
+	test_cmp_rev ! HEAD "$1"
 }
 
 check_head_equals() {
-	head=$(git rev-parse --verify HEAD) &&
-	arg=$(git rev-parse --verify "$1") &&
-	test "$head" = "$arg"
+	test_cmp_rev HEAD "$1"
 }
 
 test_expect_success setup '
@@ -35,59 +34,100 @@ test_expect_success setup '
 '
 
 test_expect_success 'cherry-pick first..fourth works' '
+	git checkout -f main &&
+	git reset --hard first &&
+	test_tick &&
+	git cherry-pick first..fourth &&
+	git diff --quiet other &&
+	git diff --quiet HEAD other &&
+	check_head_differs_from fourth
+'
+
+test_expect_success 'cherry-pick three one two works' '
+	git checkout -f first &&
+	test_commit one &&
+	test_commit two &&
+	test_commit three &&
+	git checkout -f main &&
+	git reset --hard first &&
+	git cherry-pick three one two &&
+	git diff --quiet three &&
+	git diff --quiet HEAD three &&
+	test "$(git log --reverse --format=%s first..)" = "three
+one
+two"
+'
+
+test_expect_success 'cherry-pick three one two: fails' '
+	git checkout -f main &&
+	git reset --hard first &&
+	test_must_fail git cherry-pick three one two:
+'
+
+test_expect_success 'output to keep user entertained during multi-pick' '
 	cat <<-\EOF >expected &&
-	[master OBJID] second
+	[main OBJID] second
 	 Author: A U Thor <author@example.com>
-	 1 files changed, 1 insertions(+), 0 deletions(-)
-	[master OBJID] third
+	 Date: Thu Apr 7 15:14:13 2005 -0700
+	 1 file changed, 1 insertion(+)
+	[main OBJID] third
 	 Author: A U Thor <author@example.com>
-	 1 files changed, 1 insertions(+), 0 deletions(-)
-	[master OBJID] fourth
+	 Date: Thu Apr 7 15:15:13 2005 -0700
+	 1 file changed, 1 insertion(+)
+	[main OBJID] fourth
 	 Author: A U Thor <author@example.com>
-	 1 files changed, 1 insertions(+), 0 deletions(-)
+	 Date: Thu Apr 7 15:16:13 2005 -0700
+	 1 file changed, 1 insertion(+)
 	EOF
 
-	git checkout -f master &&
+	git checkout -f main &&
 	git reset --hard first &&
 	test_tick &&
 	git cherry-pick first..fourth >actual &&
-	git diff --quiet other &&
-	git diff --quiet HEAD other &&
-
 	sed -e "s/$_x05[0-9a-f][0-9a-f]/OBJID/" <actual >actual.fuzzy &&
-	test_cmp expected actual.fuzzy &&
-	check_head_differs_from fourth
+	test_line_count -ge 3 actual.fuzzy &&
+	test_cmp expected actual.fuzzy
 '
 
 test_expect_success 'cherry-pick --strategy resolve first..fourth works' '
-	cat <<-\EOF >expected &&
-	Trying simple merge.
-	[master OBJID] second
-	 Author: A U Thor <author@example.com>
-	 1 files changed, 1 insertions(+), 0 deletions(-)
-	Trying simple merge.
-	[master OBJID] third
-	 Author: A U Thor <author@example.com>
-	 1 files changed, 1 insertions(+), 0 deletions(-)
-	Trying simple merge.
-	[master OBJID] fourth
-	 Author: A U Thor <author@example.com>
-	 1 files changed, 1 insertions(+), 0 deletions(-)
-	EOF
-
-	git checkout -f master &&
+	git checkout -f main &&
 	git reset --hard first &&
 	test_tick &&
-	git cherry-pick --strategy resolve first..fourth >actual &&
+	git cherry-pick --strategy resolve first..fourth &&
 	git diff --quiet other &&
 	git diff --quiet HEAD other &&
-	sed -e "s/$_x05[0-9a-f][0-9a-f]/OBJID/" <actual >actual.fuzzy &&
-	test_cmp expected actual.fuzzy &&
 	check_head_differs_from fourth
 '
 
+test_expect_success 'output during multi-pick indicates merge strategy' '
+	cat <<-\EOF >expected &&
+	Trying simple merge.
+	[main OBJID] second
+	 Author: A U Thor <author@example.com>
+	 Date: Thu Apr 7 15:14:13 2005 -0700
+	 1 file changed, 1 insertion(+)
+	Trying simple merge.
+	[main OBJID] third
+	 Author: A U Thor <author@example.com>
+	 Date: Thu Apr 7 15:15:13 2005 -0700
+	 1 file changed, 1 insertion(+)
+	Trying simple merge.
+	[main OBJID] fourth
+	 Author: A U Thor <author@example.com>
+	 Date: Thu Apr 7 15:16:13 2005 -0700
+	 1 file changed, 1 insertion(+)
+	EOF
+
+	git checkout -f main &&
+	git reset --hard first &&
+	test_tick &&
+	git cherry-pick --strategy resolve first..fourth >actual &&
+	sed -e "s/$_x05[0-9a-f][0-9a-f]/OBJID/" <actual >actual.fuzzy &&
+	test_cmp expected actual.fuzzy
+'
+
 test_expect_success 'cherry-pick --ff first..fourth works' '
-	git checkout -f master &&
+	git checkout -f main &&
 	git reset --hard first &&
 	test_tick &&
 	git cherry-pick --ff first..fourth &&
@@ -97,7 +137,7 @@ test_expect_success 'cherry-pick --ff first..fourth works' '
 '
 
 test_expect_success 'cherry-pick -n first..fourth works' '
-	git checkout -f master &&
+	git checkout -f main &&
 	git reset --hard first &&
 	test_tick &&
 	git cherry-pick -n first..fourth &&
@@ -107,7 +147,7 @@ test_expect_success 'cherry-pick -n first..fourth works' '
 '
 
 test_expect_success 'revert first..fourth works' '
-	git checkout -f master &&
+	git checkout -f main &&
 	git reset --hard fourth &&
 	test_tick &&
 	git revert first..fourth &&
@@ -117,7 +157,7 @@ test_expect_success 'revert first..fourth works' '
 '
 
 test_expect_success 'revert ^first fourth works' '
-	git checkout -f master &&
+	git checkout -f main &&
 	git reset --hard fourth &&
 	test_tick &&
 	git revert ^first fourth &&
@@ -127,7 +167,7 @@ test_expect_success 'revert ^first fourth works' '
 '
 
 test_expect_success 'revert fourth fourth~1 fourth~2 works' '
-	git checkout -f master &&
+	git checkout -f main &&
 	git reset --hard fourth &&
 	test_tick &&
 	git revert fourth fourth~1 fourth~2 &&
@@ -137,7 +177,7 @@ test_expect_success 'revert fourth fourth~1 fourth~2 works' '
 '
 
 test_expect_success 'cherry-pick -3 fourth works' '
-	git checkout -f master &&
+	git checkout -f main &&
 	git reset --hard first &&
 	test_tick &&
 	git cherry-pick -3 fourth &&
@@ -147,7 +187,7 @@ test_expect_success 'cherry-pick -3 fourth works' '
 '
 
 test_expect_success 'cherry-pick --stdin works' '
-	git checkout -f master &&
+	git checkout -f main &&
 	git reset --hard first &&
 	test_tick &&
 	git rev-list --reverse first..fourth | git cherry-pick --stdin &&

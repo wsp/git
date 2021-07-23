@@ -2,7 +2,10 @@
 # Copyright (C) 2006, 2007 Shawn Pearce
 
 proc find_ssh_key {} {
-	foreach name {~/.ssh/id_dsa.pub ~/.ssh/id_rsa.pub ~/.ssh/identity.pub} {
+	foreach name {
+		~/.ssh/id_dsa.pub ~/.ssh/id_ecdsa.pub ~/.ssh/id_ed25519.pub
+		~/.ssh/id_rsa.pub ~/.ssh/identity.pub
+	} {
 		if {[file exists $name]} {
 			set fh    [open $name r]
 			set cont  [read $fh]
@@ -117,7 +120,7 @@ proc read_sshkey_output {fd w} {
 	} else {
 		set finfo [find_ssh_key]
 		if {$finfo eq {}} {
-			set sshkey_title [mc "Generation succeded, but no keys found."]
+			set sshkey_title [mc "Generation succeeded, but no keys found."]
 			$w.contents insert end $sshkey_output
 		} else {
 			set sshkey_title [mc "Your key is in: %s" [lindex $finfo 0]]

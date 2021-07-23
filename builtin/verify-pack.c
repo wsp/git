@@ -1,40 +1,43 @@
 #include "builtin.h"
 #include "cache.h"
+#include "config.h"
 #include "run-command.h"
 #include "parse-options.h"
 
 #define VERIFY_PACK_VERBOSE 01
 #define VERIFY_PACK_STAT_ONLY 02
 
-static int verify_one_pack(const char *path, unsigned int flags)
+static int verify_one_pack(const char *path, unsigned int flags, const char *hash_algo)
 {
-	struct child_process index_pack;
-	const char *argv[] = {"index-pack", NULL, NULL, NULL };
+	struct child_process index_pack = CHILD_PROCESS_INIT;
+	struct strvec *argv = &index_pack.args;
 	struct strbuf arg = STRBUF_INIT;
 	int verbose = flags & VERIFY_PACK_VERBOSE;
 	int stat_only = flags & VERIFY_PACK_STAT_ONLY;
 	int err;
 
+	strvec_push(argv, "index-pack");
+
 	if (stat_only)
-		argv[1] = "--verify-stat-only";
+		strvec_push(argv, "--verify-stat-only");
 	else if (verbose)
-		argv[1] = "--verify-stat";
+		strvec_push(argv, "--verify-stat");
 	else
-		argv[1] = "--verify";
+		strvec_push(argv, "--verify");
+
+	if (hash_algo)
+		strvec_pushf(argv, "--object-format=%s", hash_algo);
 
 	/*
 	 * In addition to "foo.pack" we accept "foo.idx" and "foo";
 	 * normalize these forms to "foo.pack" for "index-pack --verify".
 	 */
 	strbuf_addstr(&arg, path);
-	if (has_extension(arg.buf, ".idx"))
-		strbuf_splice(&arg, arg.len - 3, 3, "pack", 4);
-	else if (!has_extension(arg.buf, ".pack"))
-		strbuf_add(&arg, ".pack", 5);
-	argv[2] = arg.buf;
+	if (strbuf_strip_suffix(&arg, ".idx") ||
+	    !ends_with(arg.buf, ".pack"))
+		strbuf_addstr(&arg, ".pack");
+	strvec_push(argv, arg.buf);
 
-	memset(&index_pack, 0, sizeof(index_pack));
-	index_pack.argv = argv;
 	index_pack.git_cmd = 1;
 
 	err = run_command(&index_pack);
@@ -53,7 +56,7 @@ static int verify_one_pack(const char *path, unsigned int flags)
 }
 
 static const char * const verify_pack_usage[] = {
-	"git verify-pack [-v|--verbose] [-s|--stat-only] <pack>...",
+	N_("git verify-pack [-v | --verbose] [-s | --stat-only] <pack>..."),
 	NULL
 };
 
@@ -61,12 +64,15 @@ int cmd_verify_pack(int argc, const char **argv, const char *prefix)
 {
 	int err = 0;
 	unsigned int flags = 0;
+	const char *object_format = NULL;
 	int i;
 	const struct option verify_pack_options[] = {
-		OPT_BIT('v', "verbose", &flags, "verbose",
+		OPT_BIT('v', "verbose", &flags, N_("verbose"),
 			VERIFY_PACK_VERBOSE),
-		OPT_BIT('s', "stat-only", &flags, "show statistics only",
+		OPT_BIT('s', "stat-only", &flags, N_("show statistics only"),
 			VERIFY_PACK_STAT_ONLY),
+		OPT_STRING(0, "object-format", &object_format, N_("hash"),
+			   N_("specify the hash algorithm to use")),
 		OPT_END()
 	};
 
@@ -76,7 +82,7 @@ int cmd_verify_pack(int argc, const char **argv, const char *prefix)
 	if (argc < 1)
 		usage_with_options(verify_pack_usage, verify_pack_options);
 	for (i = 0; i < argc; i++) {
-		if (verify_one_pack(argv[i], flags))
+		if (verify_one_pack(argv[i], flags, object_format))
 			err = 1;
 	}
 

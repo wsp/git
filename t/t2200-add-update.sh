@@ -80,11 +80,22 @@ test_expect_success 'change gets noticed' '
 
 '
 
-test_expect_success SYMLINKS 'replace a file with a symlink' '
+test_expect_success 'non-qualified update in subdir updates from the root' '
+	(
+		cd dir1 &&
+		echo even more >>sub2 &&
+		git --literal-pathspecs add -u &&
+		echo even more >>sub2 &&
+		git add -u
+	) &&
+	git diff-files --name-only >actual &&
+	test_must_be_empty actual
+'
+
+test_expect_success 'replace a file with a symlink' '
 
 	rm foo &&
-	ln -s top foo &&
-	git add -u -- foo
+	test_ln_s_add top foo
 
 '
 
@@ -124,7 +135,7 @@ test_expect_success 'add -n -u should not add but just report' '
 	after=$(git ls-files -s check top) &&
 
 	test "$before" = "$after" &&
-	test_i18ncmp expect actual
+	test_cmp expect actual
 
 '
 
@@ -150,9 +161,9 @@ test_expect_success 'add -u resolves unmerged paths' '
 	echo 2 >path3 &&
 	echo 2 >path5 &&
 
-	# Explicit resolving by adding removed paths should fail
-	test_must_fail git add path4 &&
-	test_must_fail git add path6 &&
+	# Fail to explicitly resolve removed paths with "git add"
+	test_must_fail git add --no-all path4 &&
+	test_must_fail git add --no-all path6 &&
 
 	# "add -u" should notice removals no matter what stages
 	# the index entries are in.
@@ -168,7 +179,8 @@ test_expect_success 'add -u resolves unmerged paths' '
 
 test_expect_success '"add -u non-existent" should fail' '
 	test_must_fail git add -u non-existent &&
-	! (git ls-files | grep "non-existent")
+	git ls-files >actual &&
+	! grep "non-existent" actual
 '
 
 test_done

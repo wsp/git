@@ -28,8 +28,8 @@ The 'git diff-{asterisk}' family works by first comparing two sets of
 files:
 
  - 'git diff-index' compares contents of a "tree" object and the
-   working directory (when '\--cached' flag is not used) or a
-   "tree" object and the index file (when '\--cached' flag is
+   working directory (when `--cached` flag is not used) or a
+   "tree" object and the index file (when `--cached` flag is
    used);
 
  - 'git diff-files' compares contents of the index file and the
@@ -74,6 +74,7 @@ into another list.  There are currently 5 such transformations:
 - diffcore-merge-broken
 - diffcore-pickaxe
 - diffcore-order
+- diffcore-rotate
 
 These are applied in sequence.  The set of filepairs 'git diff-{asterisk}'
 commands find are used as the input to diffcore-break, and
@@ -84,8 +85,8 @@ format sections of the manual for 'git diff-{asterisk}' commands) or
 diff-patch format.
 
 
-diffcore-break: For Splitting Up "Complete Rewrites"
-----------------------------------------------------
+diffcore-break: For Splitting Up Complete Rewrites
+--------------------------------------------------
 
 The second transformation in the chain is diffcore-break, and is
 controlled by the -B option to the 'git diff-{asterisk}' commands.  This is
@@ -108,7 +109,7 @@ it changes it to:
 For the purpose of breaking a filepair, diffcore-break examines
 the extent of changes between the contents of the files before
 and after modification (i.e. the contents that have "bcd1234..."
-and "0123456..." as their SHA1 content ID, in the above
+and "0123456..." as their SHA-1 content ID, in the above
 example).  The amount of deletion of original contents and
 insertion of new material are added together, and if it exceeds
 the "break score", the filepair is broken into two.  The break
@@ -119,7 +120,7 @@ the original is used), and can be customized by giving a number
 after "-B" option (e.g. "-B75" to tell it to use 75%).
 
 
-diffcore-rename: For Detection Renames and Copies
+diffcore-rename: For Detecting Renames and Copies
 -------------------------------------------------
 
 This transformation is used to detect renames and copies, and is
@@ -142,7 +143,7 @@ merges these filepairs and creates:
 
 When the "-C" option is used, the original contents of modified files,
 and deleted files (and also unmodified files, if the
-"\--find-copies-harder" option is used) are considered as candidates
+"--find-copies-harder" option is used) are considered as candidates
 of the source files in rename/copy operation.  If the input were like
 these filepairs, that talk about a modified file fileY and a newly
 created file file0:
@@ -168,17 +169,37 @@ a similarity score different from the default of 50% by giving a
 number after the "-M" or "-C" option (e.g. "-M8" to tell it to use
 8/10 = 80%).
 
-Note.  When the "-C" option is used with `\--find-copies-harder`
+Note that when rename detection is on but both copy and break
+detection are off, rename detection adds a preliminary step that first
+checks if files are moved across directories while keeping their
+filename the same.  If there is a file added to a directory whose
+contents is sufficiently similar to a file with the same name that got
+deleted from a different directory, it will mark them as renames and
+exclude them from the later quadratic step (the one that pairwise
+compares all unmatched files to find the "best" matches, determined by
+the highest content similarity).  So, for example, if a deleted
+docs/ext.txt and an added docs/config/ext.txt are similar enough, they
+will be marked as a rename and prevent an added docs/ext.md that may
+be even more similar to the deleted docs/ext.txt from being considered
+as the rename destination in the later step.  For this reason, the
+preliminary "match same filename" step uses a bit higher threshold to
+mark a file pair as a rename and stop considering other candidates for
+better matches.  At most, one comparison is done per file in this
+preliminary pass; so if there are several remaining ext.txt files
+throughout the directory hierarchy after exact rename detection, this
+preliminary step may be skipped for those files.
+
+Note.  When the "-C" option is used with `--find-copies-harder`
 option, 'git diff-{asterisk}' commands feed unmodified filepairs to
 diffcore mechanism as well as modified ones.  This lets the copy
 detector consider unmodified files as copy source candidates at
-the expense of making it slower.  Without `\--find-copies-harder`,
+the expense of making it slower.  Without `--find-copies-harder`,
 'git diff-{asterisk}' commands can detect copies only if the file that was
 copied happened to have been modified in the same changeset.
 
 
-diffcore-merge-broken: For Putting "Complete Rewrites" Back Together
---------------------------------------------------------------------
+diffcore-merge-broken: For Putting Complete Rewrites Back Together
+------------------------------------------------------------------
 
 This transformation is used to merge filepairs broken by
 diffcore-break, and not transformed into rename/copy by
@@ -222,25 +243,35 @@ version prefixed with '+'.
 diffcore-pickaxe: For Detecting Addition/Deletion of Specified String
 ---------------------------------------------------------------------
 
-This transformation is used to find filepairs that represent
-changes that touch a specified string, and is controlled by the
--S option and the `\--pickaxe-all` option to the 'git diff-{asterisk}'
-commands.
+This transformation limits the set of filepairs to those that change
+specified strings between the preimage and the postimage in a certain
+way.  -S<block of text> and -G<regular expression> options are used to
+specify different ways these strings are sought.
 
-When diffcore-pickaxe is in use, it checks if there are
-filepairs whose "result" side and whose "origin" side have
-different number of specified string.  Such a filepair represents
-"the string appeared in this changeset".  It also checks for the
-opposite case that loses the specified string.
+"-S<block of text>" detects filepairs whose preimage and postimage
+have different number of occurrences of the specified block of text.
+By definition, it will not detect in-file moves.  Also, when a
+changeset moves a file wholesale without affecting the interesting
+string, diffcore-rename kicks in as usual, and `-S` omits the filepair
+(since the number of occurrences of that string didn't change in that
+rename-detected filepair).  When used with `--pickaxe-regex`, treat
+the <block of text> as an extended POSIX regular expression to match,
+instead of a literal string.
 
-When `\--pickaxe-all` is not in effect, diffcore-pickaxe leaves
-only such filepairs that touch the specified string in its
-output.  When `\--pickaxe-all` is used, diffcore-pickaxe leaves all
-filepairs intact if there is such a filepair, or makes the
-output empty otherwise.  The latter behaviour is designed to
-make reviewing of the changes in the context of the whole
+"-G<regular expression>" (mnemonic: grep) detects filepairs whose
+textual diff has an added or a deleted line that matches the given
+regular expression.  This means that it will detect in-file (or what
+rename-detection considers the same file) moves, which is noise.  The
+implementation runs diff twice and greps, and this can be quite
+expensive.  To speed things up binary files without textconv filters
+will be ignored.
+
+When `-S` or `-G` are used without `--pickaxe-all`, only filepairs
+that match their respective criterion are kept in the output.  When
+`--pickaxe-all` is used, if even one filepair matches their respective
+criterion in a changeset, the entire changeset is kept.  This behavior
+is designed to make reviewing changes in the context of the whole
 changeset easier.
-
 
 diffcore-order: For Sorting the Output Based on Filenames
 ---------------------------------------------------------
@@ -254,7 +285,7 @@ pattern.  Filepairs that match a glob pattern on an earlier line
 in the file are output before ones that match a later line, and
 filepairs that do not match any glob pattern are output last.
 
-As an example, a typical orderfile for the core git probably
+As an example, a typical orderfile for the core Git probably
 would look like this:
 
 ------------------------------------------------
@@ -265,6 +296,26 @@ Documentation
 *.c
 t
 ------------------------------------------------
+
+diffcore-rotate: For Changing At Which Path Output Starts
+---------------------------------------------------------
+
+This transformation takes one pathname, and rotates the set of
+filepairs so that the filepair for the given pathname comes first,
+optionally discarding the paths that come before it.  This is used
+to implement the `--skip-to` and the `--rotate-to` options.  It is
+an error when the specified pathname is not in the set of filepairs,
+but it is not useful to error out when used with "git log" family of
+commands, because it is unreasonable to expect that a given path
+would be modified by each and every commit shown by the "git log"
+command.  For this reason, when used with "git log", the filepair
+that sorts the same as, or the first one that sorts after, the given
+pathname is where the output starts.
+
+Use of this transformation combined with diffcore-order will produce
+unexpected results, as the input to this transformation is likely
+not sorted when diffcore-order is in effect.
+
 
 SEE ALSO
 --------
@@ -279,4 +330,4 @@ link:user-manual.html[The Git User's Manual]
 
 GIT
 ---
-Part of the linkgit:git[1] suite.
+Part of the linkgit:git[1] suite

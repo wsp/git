@@ -5,13 +5,28 @@ can_diff () {
 merge_cmd () {
 	if $base_present
 	then
-		touch "$BACKUP"
-		"$merge_tool_path" \
-			-base:"$BASE" -mine:"$LOCAL" \
-			-theirs:"$REMOTE" -merged:"$MERGED"
-		check_unchanged
+		basename="$(basename "$merge_tool_path" .exe)"
+		if test "$basename" = "tortoisegitmerge"
+		then
+			"$merge_tool_path" \
+				-base "$BASE" -mine "$LOCAL" \
+				-theirs "$REMOTE" -merged "$MERGED"
+		else
+			"$merge_tool_path" \
+				-base:"$BASE" -mine:"$LOCAL" \
+				-theirs:"$REMOTE" -merged:"$MERGED"
+		fi
 	else
-		echo "TortoiseMerge cannot be used without a base" 1>&2
+		echo "$merge_tool_path cannot be used without a base" 1>&2
 		return 1
+	fi
+}
+
+translate_merge_tool_path() {
+	if type tortoisegitmerge >/dev/null 2>/dev/null
+	then
+		echo tortoisegitmerge
+	else
+		echo tortoisemerge
 	fi
 }

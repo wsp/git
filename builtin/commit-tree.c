@@ -4,20 +4,31 @@
  * Copyright (C) Linus Torvalds, 2005
  */
 #include "cache.h"
+#include "config.h"
+#include "object-store.h"
+#include "repository.h"
 #include "commit.h"
 #include "tree.h"
 #include "builtin.h"
 #include "utf8.h"
+#include "gpg-interface.h"
+#include "parse-options.h"
 
-static const char commit_tree_usage[] = "git commit-tree <sha1> [(-p <sha1>)...] < changelog";
+static const char * const commit_tree_usage[] = {
+	N_("git commit-tree [(-p <parent>)...] [-S[<keyid>]] [(-m <message>)...] "
+		"[(-F <file>)...] <tree>"),
+	NULL
+};
+
+static const char *sign_commit;
 
 static void new_parent(struct commit *parent, struct commit_list **parents_p)
 {
-	unsigned char *sha1 = parent->object.sha1;
+	struct object_id *oid = &parent->object.oid;
 	struct commit_list *parents;
 	for (parents = *parents_p; parents; parents = parents->next) {
 		if (parents->item == parent) {
-			error("duplicate parent %s ignored", sha1_to_hex(sha1));
+			error(_("duplicate parent %s ignored"), oid_to_hex(oid));
 			return;
 		}
 		parents_p = &parents->next;
@@ -25,43 +36,117 @@ static void new_parent(struct commit *parent, struct commit_list **parents_p)
 	commit_list_insert(parent, parents_p);
 }
 
+static int commit_tree_config(const char *var, const char *value, void *cb)
+{
+	int status = git_gpg_config(var, value, NULL);
+	if (status)
+		return status;
+	return git_default_config(var, value, cb);
+}
+
+static int parse_parent_arg_callback(const struct option *opt,
+		const char *arg, int unset)
+{
+	struct object_id oid;
+	struct commit_list **parents = opt->value;
+
+	BUG_ON_OPT_NEG_NOARG(unset, arg);
+
+	if (get_oid_commit(arg, &oid))
+		die(_("not a valid object name %s"), arg);
+
+	assert_oid_type(&oid, OBJ_COMMIT);
+	new_parent(lookup_commit(the_repository, &oid), parents);
+	return 0;
+}
+
+static int parse_message_arg_callback(const struct option *opt,
+		const char *arg, int unset)
+{
+	struct strbuf *buf = opt->value;
+
+	BUG_ON_OPT_NEG_NOARG(unset, arg);
+
+	if (buf->len)
+		strbuf_addch(buf, '\n');
+	strbuf_addstr(buf, arg);
+	strbuf_complete_line(buf);
+
+	return 0;
+}
+
+static int parse_file_arg_callback(const struct option *opt,
+		const char *arg, int unset)
+{
+	int fd;
+	struct strbuf *buf = opt->value;
+
+	BUG_ON_OPT_NEG_NOARG(unset, arg);
+
+	if (buf->len)
+		strbuf_addch(buf, '\n');
+	if (!strcmp(arg, "-"))
+		fd = 0;
+	else {
+		fd = open(arg, O_RDONLY);
+		if (fd < 0)
+			die_errno(_("git commit-tree: failed to open '%s'"), arg);
+	}
+	if (strbuf_read(buf, fd, 0) < 0)
+		die_errno(_("git commit-tree: failed to read '%s'"), arg);
+	if (fd && close(fd))
+		die_errno(_("git commit-tree: failed to close '%s'"), arg);
+
+	return 0;
+}
+
 int cmd_commit_tree(int argc, const char **argv, const char *prefix)
 {
-	int i;
+	static struct strbuf buffer = STRBUF_INIT;
 	struct commit_list *parents = NULL;
-	unsigned char tree_sha1[20];
-	unsigned char commit_sha1[20];
-	struct strbuf buffer = STRBUF_INIT;
+	struct object_id tree_oid;
+	struct object_id commit_oid;
 
-	git_config(git_default_config, NULL);
+	struct option options[] = {
+		OPT_CALLBACK_F('p', NULL, &parents, N_("parent"),
+			N_("id of a parent commit object"), PARSE_OPT_NONEG,
+			parse_parent_arg_callback),
+		OPT_CALLBACK_F('m', NULL, &buffer, N_("message"),
+			N_("commit message"), PARSE_OPT_NONEG,
+			parse_message_arg_callback),
+		OPT_CALLBACK_F('F', NULL, &buffer, N_("file"),
+			N_("read commit log message from file"), PARSE_OPT_NONEG,
+			parse_file_arg_callback),
+		{ OPTION_STRING, 'S', "gpg-sign", &sign_commit, N_("key-id"),
+			N_("GPG sign commit"), PARSE_OPT_OPTARG, NULL, (intptr_t) "" },
+		OPT_END()
+	};
+
+	git_config(commit_tree_config, NULL);
 
 	if (argc < 2 || !strcmp(argv[1], "-h"))
-		usage(commit_tree_usage);
-	if (get_sha1(argv[1], tree_sha1))
-		die("Not a valid object name %s", argv[1]);
+		usage_with_options(commit_tree_usage, options);
 
-	for (i = 2; i < argc; i += 2) {
-		unsigned char sha1[20];
-		const char *a, *b;
-		a = argv[i]; b = argv[i+1];
-		if (!b || strcmp(a, "-p"))
-			usage(commit_tree_usage);
+	argc = parse_options(argc, argv, prefix, options, commit_tree_usage, 0);
 
-		if (get_sha1(b, sha1))
-			die("Not a valid object name %s", b);
-		assert_sha1_type(sha1, OBJ_COMMIT);
-		new_parent(lookup_commit(sha1), &parents);
+	if (argc != 1)
+		die(_("must give exactly one tree"));
+
+	if (get_oid_tree(argv[0], &tree_oid))
+		die(_("not a valid object name %s"), argv[0]);
+
+	if (!buffer.len) {
+		if (strbuf_read(&buffer, 0, 0) < 0)
+			die_errno(_("git commit-tree: failed to read"));
 	}
 
-	if (strbuf_read(&buffer, 0, 0) < 0)
-		die_errno("git commit-tree: failed to read");
-
-	if (commit_tree(buffer.buf, tree_sha1, parents, commit_sha1, NULL)) {
+	if (commit_tree(buffer.buf, buffer.len, &tree_oid, parents, &commit_oid,
+			NULL, sign_commit)) {
 		strbuf_release(&buffer);
 		return 1;
 	}
 
-	printf("%s\n", sha1_to_hex(commit_sha1));
+	printf("%s\n", oid_to_hex(&commit_oid));
 	strbuf_release(&buffer);
 	return 0;
 }

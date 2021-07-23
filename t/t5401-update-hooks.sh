@@ -15,11 +15,11 @@ test_expect_success setup '
 	git update-index a &&
 	tree1=$(git write-tree) &&
 	commit1=$(echo modify | git commit-tree $tree1 -p $commit0) &&
-	git update-ref refs/heads/master $commit0 &&
+	git update-ref refs/heads/main $commit0 &&
 	git update-ref refs/heads/tofail $commit1 &&
 	git clone --bare ./. victim.git &&
 	GIT_DIR=victim.git git update-ref refs/heads/tofail $commit1 &&
-	git update-ref refs/heads/master $commit1 &&
+	git update-ref refs/heads/main $commit1 &&
 	git update-ref refs/heads/tofail $commit0
 '
 
@@ -38,7 +38,7 @@ echo "$@" >>$GIT_DIR/update.args
 read x; printf %s "$x" >$GIT_DIR/update.stdin
 echo STDOUT update $1
 echo STDERR update $1 >&2
-test "$1" = refs/heads/master || exit
+test "$1" = refs/heads/main || exit
 EOF
 chmod u+x victim.git/hooks/update
 
@@ -62,11 +62,11 @@ chmod u+x victim.git/hooks/post-update
 
 test_expect_success push '
 	test_must_fail git send-pack --force ./victim.git \
-		master tofail >send.out 2>send.err
+		main tofail >send.out 2>send.err
 '
 
 test_expect_success 'updated as expected' '
-	test $(GIT_DIR=victim.git git rev-parse master) = $commit1 &&
+	test $(GIT_DIR=victim.git git rev-parse main) = $commit1 &&
 	test $(GIT_DIR=victim.git git rev-parse tofail) = $commit1
 '
 
@@ -82,46 +82,46 @@ test_expect_success 'hooks ran' '
 '
 
 test_expect_success 'pre-receive hook input' '
-	(echo $commit0 $commit1 refs/heads/master;
+	(echo $commit0 $commit1 refs/heads/main &&
 	 echo $commit1 $commit0 refs/heads/tofail
 	) | test_cmp - victim.git/pre-receive.stdin
 '
 
 test_expect_success 'update hook arguments' '
-	(echo refs/heads/master $commit0 $commit1;
+	(echo refs/heads/main $commit0 $commit1 &&
 	 echo refs/heads/tofail $commit1 $commit0
 	) | test_cmp - victim.git/update.args
 '
 
 test_expect_success 'post-receive hook input' '
-	echo $commit0 $commit1 refs/heads/master |
+	echo $commit0 $commit1 refs/heads/main |
 	test_cmp - victim.git/post-receive.stdin
 '
 
 test_expect_success 'post-update hook arguments' '
-	echo refs/heads/master |
+	echo refs/heads/main |
 	test_cmp - victim.git/post-update.args
 '
 
 test_expect_success 'all hook stdin is /dev/null' '
-	! test -s victim.git/update.stdin &&
-	! test -s victim.git/post-update.stdin
+	test_must_be_empty victim.git/update.stdin &&
+	test_must_be_empty victim.git/post-update.stdin
 '
 
 test_expect_success 'all *-receive hook args are empty' '
-	! test -s victim.git/pre-receive.args &&
-	! test -s victim.git/post-receive.args
+	test_must_be_empty victim.git/pre-receive.args &&
+	test_must_be_empty victim.git/post-receive.args
 '
 
 test_expect_success 'send-pack produced no output' '
-	! test -s send.out
+	test_must_be_empty send.out
 '
 
 cat <<EOF >expect
 remote: STDOUT pre-receive
 remote: STDERR pre-receive
-remote: STDOUT update refs/heads/master
-remote: STDERR update refs/heads/master
+remote: STDOUT update refs/heads/main
+remote: STDERR update refs/heads/main
 remote: STDOUT update refs/heads/tofail
 remote: STDERR update refs/heads/tofail
 remote: error: hook declined to update refs/heads/tofail
@@ -133,6 +133,19 @@ EOF
 test_expect_success 'send-pack stderr contains hook messages' '
 	grep ^remote: send.err | sed "s/ *\$//" >actual &&
 	test_cmp expect actual
+'
+
+test_expect_success 'pre-receive hook that forgets to read its input' '
+	write_script victim.git/hooks/pre-receive <<-\EOF &&
+	exit 0
+	EOF
+	rm -f victim.git/hooks/update victim.git/hooks/post-update &&
+
+	for v in $(test_seq 100 999)
+	do
+		git branch branch_$v main || return
+	done &&
+	git push ./victim.git "+refs/heads/*:refs/heads/*"
 '
 
 test_done

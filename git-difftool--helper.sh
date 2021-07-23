@@ -40,15 +40,17 @@ launch_merge_tool () {
 	# the user with the real $MERGED name before launching $merge_tool.
 	if should_prompt
 	then
-		printf "\nViewing: '$MERGED'\n"
+		printf "\nViewing (%s/%s): '%s'\n" "$GIT_DIFF_PATH_COUNTER" \
+			"$GIT_DIFF_PATH_TOTAL" "$MERGED"
 		if use_ext_cmd
 		then
-			printf "Launch '%s' [Y/n]: " \
+			printf "Launch '%s' [Y/n]? " \
 				"$GIT_DIFFTOOL_EXTCMD"
 		else
-			printf "Launch '%s' [Y/n]: " "$merge_tool"
+			printf "Launch '%s' [Y/n]? " "$merge_tool"
 		fi
-		if read ans && test "$ans" = n
+		read ans || return
+		if test "$ans" = n
 		then
 			return
 		fi
@@ -59,6 +61,9 @@ launch_merge_tool () {
 		export BASE
 		eval $GIT_DIFFTOOL_EXTCMD '"$LOCAL"' '"$REMOTE"'
 	else
+		initialize_merge_tool "$merge_tool"
+		# ignore the error from the above --- run_merge_tool
+		# will diagnose unusable tool by itself
 		run_merge_tool "$merge_tool"
 	fi
 }
@@ -69,13 +74,38 @@ then
 	then
 		merge_tool="$GIT_DIFF_TOOL"
 	else
-		merge_tool="$(get_merge_tool)" || exit
+		merge_tool="$(get_merge_tool)"
 	fi
 fi
 
-# Launch the merge tool on each path provided by 'git diff'
-while test $# -gt 6
-do
-	launch_merge_tool "$1" "$2" "$5"
-	shift 7
-done
+if test -n "$GIT_DIFFTOOL_DIRDIFF"
+then
+	LOCAL="$1"
+	REMOTE="$2"
+	initialize_merge_tool "$merge_tool"
+	# ignore the error from the above --- run_merge_tool
+	# will diagnose unusable tool by itself
+	run_merge_tool "$merge_tool" false
+else
+	# Launch the merge tool on each path provided by 'git diff'
+	while test $# -gt 6
+	do
+		launch_merge_tool "$1" "$2" "$5"
+		status=$?
+		if test $status -ge 126
+		then
+			# Command not found (127), not executable (126) or
+			# exited via a signal (>= 128).
+			exit $status
+		fi
+
+		if test "$status" != 0 &&
+			test "$GIT_DIFFTOOL_TRUST_EXIT_CODE" = true
+		then
+			exit $status
+		fi
+		shift 7
+	done
+fi
+
+exit 0

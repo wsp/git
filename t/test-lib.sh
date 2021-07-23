@@ -1,4 +1,4 @@
-#!/bin/sh
+# Test framework for git.  See t/README for usage.
 #
 # Copyright (c) 2005 Junio C Hamano
 #
@@ -15,86 +15,511 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see http://www.gnu.org/licenses/ .
 
-# if --tee was passed, write the output not only to the terminal, but
-# additionally to the file test-results/$BASENAME.out, too.
-case "$GIT_TEST_TEE_STARTED, $* " in
-done,*)
-	# do not redirect again
-	;;
-*' --tee '*|*' --va'*)
-	mkdir -p test-results
-	BASE=test-results/$(basename "$0" .sh)
-	(GIT_TEST_TEE_STARTED=done ${SHELL-sh} "$0" "$@" 2>&1;
-	 echo $? > $BASE.exit) | tee $BASE.out
-	test "$(cat $BASE.exit)" = 0
-	exit
-	;;
+# Test the binaries we have just built.  The tests are kept in
+# t/ subdirectory and are run in 'trash directory' subdirectory.
+if test -z "$TEST_DIRECTORY"
+then
+	# We allow tests to override this, in case they want to run tests
+	# outside of t/, e.g. for running tests on the test library
+	# itself.
+	TEST_DIRECTORY=$(pwd)
+else
+	# ensure that TEST_DIRECTORY is an absolute path so that it
+	# is valid even if the current working directory is changed
+	TEST_DIRECTORY=$(cd "$TEST_DIRECTORY" && pwd) || exit 1
+fi
+if test -z "$TEST_OUTPUT_DIRECTORY"
+then
+	# Similarly, override this to store the test-results subdir
+	# elsewhere
+	TEST_OUTPUT_DIRECTORY=$TEST_DIRECTORY
+fi
+GIT_BUILD_DIR="$TEST_DIRECTORY"/..
+
+# If we were built with ASAN, it may complain about leaks
+# of program-lifetime variables. Disable it by default to lower
+# the noise level. This needs to happen at the start of the script,
+# before we even do our "did we build git yet" check (since we don't
+# want that one to complain to stderr).
+: ${ASAN_OPTIONS=detect_leaks=0:abort_on_error=1}
+export ASAN_OPTIONS
+
+# If LSAN is in effect we _do_ want leak checking, but we still
+# want to abort so that we notice the problems.
+: ${LSAN_OPTIONS=abort_on_error=1}
+export LSAN_OPTIONS
+
+if test ! -f "$GIT_BUILD_DIR"/GIT-BUILD-OPTIONS
+then
+	echo >&2 'error: GIT-BUILD-OPTIONS missing (has Git been built?).'
+	exit 1
+fi
+. "$GIT_BUILD_DIR"/GIT-BUILD-OPTIONS
+export PERL_PATH SHELL_PATH
+
+# Disallow the use of abbreviated options in the test suite by default
+if test -z "${GIT_TEST_DISALLOW_ABBREVIATED_OPTIONS}"
+then
+	GIT_TEST_DISALLOW_ABBREVIATED_OPTIONS=true
+	export GIT_TEST_DISALLOW_ABBREVIATED_OPTIONS
+fi
+
+# Explicitly set the default branch name for testing, to avoid the
+# transitory "git init" warning under --verbose.
+: ${GIT_TEST_DEFAULT_INITIAL_BRANCH_NAME:=master}
+export GIT_TEST_DEFAULT_INITIAL_BRANCH_NAME
+
+################################################################
+# It appears that people try to run tests without building...
+"${GIT_TEST_INSTALLED:-$GIT_BUILD_DIR}/git$X" >/dev/null
+if test $? != 1
+then
+	if test -n "$GIT_TEST_INSTALLED"
+	then
+		echo >&2 "error: there is no working Git at '$GIT_TEST_INSTALLED'"
+	else
+		echo >&2 'error: you do not seem to have built git yet.'
+	fi
+	exit 1
+fi
+
+store_arg_to=
+opt_required_arg=
+# $1: option string
+# $2: name of the var where the arg will be stored
+mark_option_requires_arg () {
+	if test -n "$opt_required_arg"
+	then
+		echo "error: options that require args cannot be bundled" \
+			"together: '$opt_required_arg' and '$1'" >&2
+		exit 1
+	fi
+	opt_required_arg=$1
+	store_arg_to=$2
+}
+
+parse_option () {
+	local opt="$1"
+
+	case "$opt" in
+	-d|--d|--de|--deb|--debu|--debug)
+		debug=t ;;
+	-i|--i|--im|--imm|--imme|--immed|--immedi|--immedia|--immediat|--immediate)
+		immediate=t ;;
+	-l|--l|--lo|--lon|--long|--long-|--long-t|--long-te|--long-tes|--long-test|--long-tests)
+		GIT_TEST_LONG=t; export GIT_TEST_LONG ;;
+	-r)
+		mark_option_requires_arg "$opt" run_list
+		;;
+	--run=*)
+		run_list=${opt#--*=} ;;
+	-h|--h|--he|--hel|--help)
+		help=t ;;
+	-v|--v|--ve|--ver|--verb|--verbo|--verbos|--verbose)
+		verbose=t ;;
+	--verbose-only=*)
+		verbose_only=${opt#--*=}
+		;;
+	-q|--q|--qu|--qui|--quie|--quiet)
+		# Ignore --quiet under a TAP::Harness. Saying how many tests
+		# passed without the ok/not ok details is always an error.
+		test -z "$HARNESS_ACTIVE" && quiet=t ;;
+	--with-dashes)
+		with_dashes=t ;;
+	--no-bin-wrappers)
+		no_bin_wrappers=t ;;
+	--no-color)
+		color= ;;
+	--va|--val|--valg|--valgr|--valgri|--valgrin|--valgrind)
+		valgrind=memcheck
+		tee=t
+		;;
+	--valgrind=*)
+		valgrind=${opt#--*=}
+		tee=t
+		;;
+	--valgrind-only=*)
+		valgrind_only=${opt#--*=}
+		tee=t
+		;;
+	--tee)
+		tee=t ;;
+	--root=*)
+		root=${opt#--*=} ;;
+	--chain-lint)
+		GIT_TEST_CHAIN_LINT=1 ;;
+	--no-chain-lint)
+		GIT_TEST_CHAIN_LINT=0 ;;
+	-x)
+		trace=t ;;
+	-V|--verbose-log)
+		verbose_log=t
+		tee=t
+		;;
+	--write-junit-xml)
+		write_junit_xml=t
+		;;
+	--stress)
+		stress=t ;;
+	--stress=*)
+		echo "error: --stress does not accept an argument: '$opt'" >&2
+		echo "did you mean --stress-jobs=${opt#*=} or --stress-limit=${opt#*=}?" >&2
+		exit 1
+		;;
+	--stress-jobs=*)
+		stress=t;
+		stress_jobs=${opt#--*=}
+		case "$stress_jobs" in
+		*[!0-9]*|0*|"")
+			echo "error: --stress-jobs=<N> requires the number of jobs to run" >&2
+			exit 1
+			;;
+		*)	# Good.
+			;;
+		esac
+		;;
+	--stress-limit=*)
+		stress=t;
+		stress_limit=${opt#--*=}
+		case "$stress_limit" in
+		*[!0-9]*|0*|"")
+			echo "error: --stress-limit=<N> requires the number of repetitions" >&2
+			exit 1
+			;;
+		*)	# Good.
+			;;
+		esac
+		;;
+	*)
+		echo "error: unknown test option '$opt'" >&2; exit 1 ;;
+	esac
+}
+
+# Parse options while taking care to leave $@ intact, so we will still
+# have all the original command line options when executing the test
+# script again for '--tee' and '--verbose-log' later.
+for opt
+do
+	if test -n "$store_arg_to"
+	then
+		eval $store_arg_to=\$opt
+		store_arg_to=
+		opt_required_arg=
+		continue
+	fi
+
+	case "$opt" in
+	--*|-?)
+		parse_option "$opt" ;;
+	-?*)
+		# bundled short options must be fed separately to parse_option
+		opt=${opt#-}
+		while test -n "$opt"
+		do
+			extra=${opt#?}
+			this=${opt%$extra}
+			opt=$extra
+			parse_option "-$this"
+		done
+		;;
+	*)
+		echo "error: unknown test option '$opt'" >&2; exit 1 ;;
+	esac
+done
+if test -n "$store_arg_to"
+then
+	echo "error: $opt_required_arg requires an argument" >&2
+	exit 1
+fi
+
+if test -n "$valgrind_only"
+then
+	test -z "$valgrind" && valgrind=memcheck
+	test -z "$verbose" && verbose_only="$valgrind_only"
+elif test -n "$valgrind"
+then
+	test -z "$verbose_log" && verbose=t
+fi
+
+if test -n "$stress"
+then
+	verbose=t
+	trace=t
+	immediate=t
+fi
+
+TEST_STRESS_JOB_SFX="${GIT_TEST_STRESS_JOB_NR:+.stress-$GIT_TEST_STRESS_JOB_NR}"
+TEST_NAME="$(basename "$0" .sh)"
+TEST_NUMBER="${TEST_NAME%%-*}"
+TEST_NUMBER="${TEST_NUMBER#t}"
+TEST_RESULTS_DIR="$TEST_OUTPUT_DIRECTORY/test-results"
+TEST_RESULTS_BASE="$TEST_RESULTS_DIR/$TEST_NAME$TEST_STRESS_JOB_SFX"
+TRASH_DIRECTORY="trash directory.$TEST_NAME$TEST_STRESS_JOB_SFX"
+test -n "$root" && TRASH_DIRECTORY="$root/$TRASH_DIRECTORY"
+case "$TRASH_DIRECTORY" in
+/*) ;; # absolute path is good
+ *) TRASH_DIRECTORY="$TEST_OUTPUT_DIRECTORY/$TRASH_DIRECTORY" ;;
 esac
 
-# Keep the original TERM for say_color
-ORIGINAL_TERM=$TERM
+# If --stress was passed, run this test repeatedly in several parallel loops.
+if test "$GIT_TEST_STRESS_STARTED" = "done"
+then
+	: # Don't stress test again.
+elif test -n "$stress"
+then
+	if test -n "$stress_jobs"
+	then
+		job_count=$stress_jobs
+	elif test -n "$GIT_TEST_STRESS_LOAD"
+	then
+		job_count="$GIT_TEST_STRESS_LOAD"
+	elif job_count=$(getconf _NPROCESSORS_ONLN 2>/dev/null) &&
+	     test -n "$job_count"
+	then
+		job_count=$((2 * $job_count))
+	else
+		job_count=8
+	fi
+
+	mkdir -p "$TEST_RESULTS_DIR"
+	stressfail="$TEST_RESULTS_BASE.stress-failed"
+	rm -f "$stressfail"
+
+	stress_exit=0
+	trap '
+		kill $job_pids 2>/dev/null
+		wait
+		stress_exit=1
+	' TERM INT HUP
+
+	job_pids=
+	job_nr=0
+	while test $job_nr -lt "$job_count"
+	do
+		(
+			GIT_TEST_STRESS_STARTED=done
+			GIT_TEST_STRESS_JOB_NR=$job_nr
+			export GIT_TEST_STRESS_STARTED GIT_TEST_STRESS_JOB_NR
+
+			trap '
+				kill $test_pid 2>/dev/null
+				wait
+				exit 1
+			' TERM INT
+
+			cnt=1
+			while ! test -e "$stressfail" &&
+			      { test -z "$stress_limit" ||
+				test $cnt -le $stress_limit ; }
+			do
+				$TEST_SHELL_PATH "$0" "$@" >"$TEST_RESULTS_BASE.stress-$job_nr.out" 2>&1 &
+				test_pid=$!
+
+				if wait $test_pid
+				then
+					printf "OK   %2d.%d\n" $GIT_TEST_STRESS_JOB_NR $cnt
+				else
+					echo $GIT_TEST_STRESS_JOB_NR >>"$stressfail"
+					printf "FAIL %2d.%d\n" $GIT_TEST_STRESS_JOB_NR $cnt
+				fi
+				cnt=$(($cnt + 1))
+			done
+		) &
+		job_pids="$job_pids $!"
+		job_nr=$(($job_nr + 1))
+	done
+
+	wait
+
+	if test -f "$stressfail"
+	then
+		stress_exit=1
+		echo "Log(s) of failed test run(s):"
+		for failed_job_nr in $(sort -n "$stressfail")
+		do
+			echo "Contents of '$TEST_RESULTS_BASE.stress-$failed_job_nr.out':"
+			cat "$TEST_RESULTS_BASE.stress-$failed_job_nr.out"
+		done
+		rm -rf "$TRASH_DIRECTORY.stress-failed"
+		# Move the last one.
+		mv "$TRASH_DIRECTORY.stress-$failed_job_nr" "$TRASH_DIRECTORY.stress-failed"
+	fi
+
+	exit $stress_exit
+fi
+
+# if --tee was passed, write the output not only to the terminal, but
+# additionally to the file test-results/$BASENAME.out, too.
+if test "$GIT_TEST_TEE_STARTED" = "done"
+then
+	: # do not redirect again
+elif test -n "$tee"
+then
+	mkdir -p "$TEST_RESULTS_DIR"
+
+	# Make this filename available to the sub-process in case it is using
+	# --verbose-log.
+	GIT_TEST_TEE_OUTPUT_FILE=$TEST_RESULTS_BASE.out
+	export GIT_TEST_TEE_OUTPUT_FILE
+
+	# Truncate before calling "tee -a" to get rid of the results
+	# from any previous runs.
+	>"$GIT_TEST_TEE_OUTPUT_FILE"
+
+	(GIT_TEST_TEE_STARTED=done ${TEST_SHELL_PATH} "$0" "$@" 2>&1;
+	 echo $? >"$TEST_RESULTS_BASE.exit") | tee -a "$GIT_TEST_TEE_OUTPUT_FILE"
+	test "$(cat "$TEST_RESULTS_BASE.exit")" = 0
+	exit
+fi
+
+if test -n "$trace" && test -n "$test_untraceable"
+then
+	# '-x' tracing requested, but this test script can't be reliably
+	# traced, unless it is run with a Bash version supporting
+	# BASH_XTRACEFD (introduced in Bash v4.1).
+	#
+	# Perform this version check _after_ the test script was
+	# potentially re-executed with $TEST_SHELL_PATH for '--tee' or
+	# '--verbose-log', so the right shell is checked and the
+	# warning is issued only once.
+	if test -n "$BASH_VERSION" && eval '
+	     test ${BASH_VERSINFO[0]} -gt 4 || {
+	       test ${BASH_VERSINFO[0]} -eq 4 &&
+	       test ${BASH_VERSINFO[1]} -ge 1
+	     }
+	   '
+	then
+		: Executed by a Bash version supporting BASH_XTRACEFD.  Good.
+	else
+		echo >&2 "warning: ignoring -x; '$0' is untraceable without BASH_XTRACEFD"
+		trace=
+	fi
+fi
+if test -n "$trace" && test -z "$verbose_log"
+then
+	verbose=t
+fi
 
 # For repeatability, reset the environment to known value.
+# TERM is sanitized below, after saving color control sequences.
 LANG=C
 LC_ALL=C
 PAGER=cat
 TZ=UTC
-TERM=dumb
-export LANG LC_ALL PAGER TERM TZ
+COLUMNS=80
+export LANG LC_ALL PAGER TZ COLUMNS
 EDITOR=:
-unset VISUAL
-unset EMAIL
-unset $(perl -e '
+
+# A call to "unset" with no arguments causes at least Solaris 10
+# /usr/xpg4/bin/sh and /bin/ksh to bail out.  So keep the unsets
+# deriving from the command substitution clustered with the other
+# ones.
+unset VISUAL EMAIL LANGUAGE $("$PERL_PATH" -e '
 	my @env = keys %ENV;
 	my $ok = join("|", qw(
 		TRACE
 		DEBUG
-		USE_LOOKUP
 		TEST
 		.*_TEST
 		PROVE
 		VALGRIND
+		UNZIP
+		PERF_
+		CURL_VERBOSE
+		TRACE_CURL
 	));
 	my @vars = grep(/^GIT_/ && !/^GIT_($ok)/o, @env);
 	print join("\n", @vars);
 ')
-GIT_AUTHOR_EMAIL=author@example.com
+unset XDG_CACHE_HOME
+unset XDG_CONFIG_HOME
+unset GITPERLLIB
+TEST_AUTHOR_LOCALNAME=author
+TEST_AUTHOR_DOMAIN=example.com
+GIT_AUTHOR_EMAIL=${TEST_AUTHOR_LOCALNAME}@${TEST_AUTHOR_DOMAIN}
 GIT_AUTHOR_NAME='A U Thor'
-GIT_COMMITTER_EMAIL=committer@example.com
+GIT_AUTHOR_DATE='1112354055 +0200'
+TEST_COMMITTER_LOCALNAME=committer
+TEST_COMMITTER_DOMAIN=example.com
+GIT_COMMITTER_EMAIL=${TEST_COMMITTER_LOCALNAME}@${TEST_COMMITTER_DOMAIN}
 GIT_COMMITTER_NAME='C O Mitter'
+GIT_COMMITTER_DATE='1112354055 +0200'
 GIT_MERGE_VERBOSITY=5
-export GIT_MERGE_VERBOSITY
+GIT_MERGE_AUTOEDIT=no
+export GIT_MERGE_VERBOSITY GIT_MERGE_AUTOEDIT
 export GIT_AUTHOR_EMAIL GIT_AUTHOR_NAME
 export GIT_COMMITTER_EMAIL GIT_COMMITTER_NAME
+export GIT_COMMITTER_DATE GIT_AUTHOR_DATE
 export EDITOR
+
+GIT_DEFAULT_HASH="${GIT_TEST_DEFAULT_HASH:-sha1}"
+export GIT_DEFAULT_HASH
+GIT_TEST_MERGE_ALGORITHM="${GIT_TEST_MERGE_ALGORITHM:-ort}"
+export GIT_TEST_MERGE_ALGORITHM
+
+# Tests using GIT_TRACE typically don't want <timestamp> <file>:<line> output
+GIT_TRACE_BARE=1
+export GIT_TRACE_BARE
+
+# Use specific version of the index file format
+if test -n "${GIT_TEST_INDEX_VERSION:+isset}"
+then
+	GIT_INDEX_VERSION="$GIT_TEST_INDEX_VERSION"
+	export GIT_INDEX_VERSION
+fi
+
+if test -n "$GIT_TEST_PERL_FATAL_WARNINGS"
+then
+	GIT_PERL_FATAL_WARNINGS=1
+	export GIT_PERL_FATAL_WARNINGS
+fi
+
+# Add libc MALLOC and MALLOC_PERTURB test
+# only if we are not executing the test with valgrind
+if test -n "$valgrind" ||
+   test -n "$TEST_NO_MALLOC_CHECK"
+then
+	setup_malloc_check () {
+		: nothing
+	}
+	teardown_malloc_check () {
+		: nothing
+	}
+else
+	setup_malloc_check () {
+		MALLOC_CHECK_=3	MALLOC_PERTURB_=165
+		export MALLOC_CHECK_ MALLOC_PERTURB_
+	}
+	teardown_malloc_check () {
+		unset MALLOC_CHECK_ MALLOC_PERTURB_
+	}
+fi
 
 # Protect ourselves from common misconfiguration to export
 # CDPATH into the environment
 unset CDPATH
 
 unset GREP_OPTIONS
+unset UNZIP
 
 case $(echo $GIT_TRACE |tr "[A-Z]" "[a-z]") in
-	1|2|true)
-		echo "* warning: Some tests will not work if GIT_TRACE" \
-			"is set as to trace on STDERR ! *"
-		echo "* warning: Please set GIT_TRACE to something" \
-			"other than 1, 2 or true ! *"
-		;;
+1|2|true)
+	GIT_TRACE=4
+	;;
 esac
-
-# Convenience
-#
-# A regexp to match 5 and 40 hexdigits
-_x05='[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'
-_x40="$_x05$_x05$_x05$_x05$_x05$_x05$_x05$_x05"
-
-# Zero SHA-1
-_z40=0000000000000000000000000000000000000000
 
 # Line feed
 LF='
 '
+
+# Single quote
+SQ=\'
+
+# UTF-8 ZERO WIDTH NON-JOINER, which HFS+ ignores
+# when case-folding filenames
+u200c=$(printf '\342\200\214')
+
+export _x05 _x35 _x40 _z40 LF u200c EMPTY_TREE EMPTY_BLOB ZERO_OID OID_REGEX
 
 # Each test should start with something like this, after copyright notices:
 #
@@ -102,101 +527,111 @@ LF='
 # This test checks if command xyzzy does the right thing...
 # '
 # . ./test-lib.sh
-[ "x$ORIGINAL_TERM" != "xdumb" ] && (
-		TERM=$ORIGINAL_TERM &&
-		export TERM &&
-		[ -t 1 ] &&
+test "x$TERM" != "xdumb" && (
+		test -t 1 &&
 		tput bold >/dev/null 2>&1 &&
 		tput setaf 1 >/dev/null 2>&1 &&
 		tput sgr0 >/dev/null 2>&1
 	) &&
 	color=t
 
-while test "$#" -ne 0
-do
-	case "$1" in
-	-d|--d|--de|--deb|--debu|--debug)
-		debug=t; shift ;;
-	-i|--i|--im|--imm|--imme|--immed|--immedi|--immedia|--immediat|--immediate)
-		immediate=t; shift ;;
-	-l|--l|--lo|--lon|--long|--long-|--long-t|--long-te|--long-tes|--long-test|--long-tests)
-		GIT_TEST_LONG=t; export GIT_TEST_LONG; shift ;;
-	-h|--h|--he|--hel|--help)
-		help=t; shift ;;
-	-v|--v|--ve|--ver|--verb|--verbo|--verbos|--verbose)
-		verbose=t; shift ;;
-	-q|--q|--qu|--qui|--quie|--quiet)
-		# Ignore --quiet under a TAP::Harness. Saying how many tests
-		# passed without the ok/not ok details is always an error.
-		test -z "$HARNESS_ACTIVE" && quiet=t; shift ;;
-	--with-dashes)
-		with_dashes=t; shift ;;
-	--no-color)
-		color=; shift ;;
-	--va|--val|--valg|--valgr|--valgri|--valgrin|--valgrind)
-		valgrind=t; verbose=t; shift ;;
-	--tee)
-		shift ;; # was handled already
-	--root=*)
-		root=$(expr "z$1" : 'z[^=]*=\(.*\)')
-		shift ;;
-	*)
-		echo "error: unknown test option '$1'" >&2; exit 1 ;;
-	esac
-done
-
-if test -n "$color"; then
+if test -n "$color"
+then
+	# Save the color control sequences now rather than run tput
+	# each time say_color() is called.  This is done for two
+	# reasons:
+	#   * TERM will be changed to dumb
+	#   * HOME will be changed to a temporary directory and tput
+	#     might need to read ~/.terminfo from the original HOME
+	#     directory to get the control sequences
+	# Note:  This approach assumes the control sequences don't end
+	# in a newline for any terminal of interest (command
+	# substitutions strip trailing newlines).  Given that most
+	# (all?) terminals in common use are related to ECMA-48, this
+	# shouldn't be a problem.
+	say_color_error=$(tput bold; tput setaf 1) # bold red
+	say_color_skip=$(tput setaf 4) # blue
+	say_color_warn=$(tput setaf 3) # brown/yellow
+	say_color_pass=$(tput setaf 2) # green
+	say_color_info=$(tput setaf 6) # cyan
+	say_color_reset=$(tput sgr0)
+	say_color_="" # no formatting for normal text
 	say_color () {
-		(
-		TERM=$ORIGINAL_TERM
-		export TERM
-		case "$1" in
-			error) tput bold; tput setaf 1;; # bold red
-			skip)  tput bold; tput setaf 2;; # bold green
-			pass)  tput setaf 2;;            # green
-			info)  tput setaf 3;;            # brown
-			*) test -n "$quiet" && return;;
-		esac
+		test -z "$1" && test -n "$quiet" && return
+		eval "say_color_color=\$say_color_$1"
 		shift
-		printf "%s" "$*"
-		tput sgr0
-		echo
-		)
+		printf "%s\\n" "$say_color_color$*$say_color_reset"
 	}
 else
 	say_color() {
 		test -z "$1" && test -n "$quiet" && return
 		shift
-		echo "$*"
+		printf "%s\n" "$*"
 	}
 fi
 
+TERM=dumb
+export TERM
+
 error () {
 	say_color error "error: $*"
+	finalize_junit_xml
 	GIT_EXIT_OK=t
 	exit 1
+}
+
+BUG () {
+	error >&7 "bug in the test script: $*"
 }
 
 say () {
 	say_color info "$*"
 }
 
+if test -n "$HARNESS_ACTIVE"
+then
+	if test "$verbose" = t || test -n "$verbose_only"
+	then
+		printf 'Bail out! %s\n' \
+		 'verbose mode forbidden under TAP harness; try --verbose-log'
+		exit 1
+	fi
+fi
+
 test "${test_description}" != "" ||
 error "Test script did not set test_description."
 
 if test "$help" = "t"
 then
-	echo "$test_description"
+	printf '%s\n' "$test_description"
 	exit 0
 fi
 
 exec 5>&1
-if test "$verbose" = "t"
+exec 6<&0
+exec 7>&2
+if test "$verbose_log" = "t"
+then
+	exec 3>>"$GIT_TEST_TEE_OUTPUT_FILE" 4>&3
+elif test "$verbose" = "t"
 then
 	exec 4>&2 3>&1
 else
 	exec 4>/dev/null 3>/dev/null
 fi
+
+# Send any "-x" output directly to stderr to avoid polluting tests
+# which capture stderr. We can do this unconditionally since it
+# has no effect if tracing isn't turned on.
+#
+# Note that this sets up the trace fd as soon as we assign the variable, so it
+# must come after the creation of descriptor 4 above. Likewise, we must never
+# unset this, as it has the side effect of closing descriptor 4, which we
+# use to show verbose tests to the user.
+#
+# Note also that we don't need or want to export it. The tracing is local to
+# this shell, and we would not want to influence any shells we exec.
+BASH_XTRACEFD=4
 
 test_failure=0
 test_count=0
@@ -208,6 +643,10 @@ test_external_has_tap=0
 
 die () {
 	code=$?
+	# This is responsible for running the atexit commands even when a
+	# test script run with '--immediate' fails, or when the user hits
+	# ctrl-C, i.e. when 'test_done' is not invoked at all.
+	test_atexit_handler || code=$?
 	if test -n "$GIT_EXIT_OK"
 	then
 		exit $code
@@ -219,301 +658,399 @@ die () {
 
 GIT_EXIT_OK=
 trap 'die' EXIT
+# Disable '-x' tracing, because with some shells, notably dash, it
+# prevents running the cleanup commands when a test script run with
+# '--verbose-log -x' is interrupted.
+trap '{ code=$?; set +x; } 2>/dev/null; exit $code' INT TERM HUP
 
-# The semantics of the editor variables are that of invoking
-# sh -c "$EDITOR \"$@\"" files ...
-#
-# If our trash directory contains shell metacharacters, they will be
-# interpreted if we just set $EDITOR directly, so do a little dance with
-# environment variables to work around this.
-#
-# In particular, quoting isn't enough, as the path may contain the same quote
-# that we're using.
-test_set_editor () {
-	FAKE_EDITOR="$1"
-	export FAKE_EDITOR
-	EDITOR='"$FAKE_EDITOR"'
-	export EDITOR
-}
-
-test_decode_color () {
-	awk '
-		function name(n) {
-			if (n == 0) return "RESET";
-			if (n == 1) return "BOLD";
-			if (n == 30) return "BLACK";
-			if (n == 31) return "RED";
-			if (n == 32) return "GREEN";
-			if (n == 33) return "YELLOW";
-			if (n == 34) return "BLUE";
-			if (n == 35) return "MAGENTA";
-			if (n == 36) return "CYAN";
-			if (n == 37) return "WHITE";
-			if (n == 40) return "BLACK";
-			if (n == 41) return "BRED";
-			if (n == 42) return "BGREEN";
-			if (n == 43) return "BYELLOW";
-			if (n == 44) return "BBLUE";
-			if (n == 45) return "BMAGENTA";
-			if (n == 46) return "BCYAN";
-			if (n == 47) return "BWHITE";
-		}
-		{
-			while (match($0, /\033\[[0-9;]*m/) != 0) {
-				printf "%s<", substr($0, 1, RSTART-1);
-				codes = substr($0, RSTART+2, RLENGTH-3);
-				if (length(codes) == 0)
-					printf "%s", name(0)
-				else {
-					n = split(codes, ary, ";");
-					sep = "";
-					for (i = 1; i <= n; i++) {
-						printf "%s%s", sep, name(ary[i]);
-						sep = ";"
-					}
-				}
-				printf ">";
-				$0 = substr($0, RSTART + RLENGTH, length($0) - RSTART - RLENGTH + 1);
-			}
-			print
-		}
-	'
-}
-
-nul_to_q () {
-	perl -pe 'y/\000/Q/'
-}
-
-q_to_nul () {
-	perl -pe 'y/Q/\000/'
-}
-
-q_to_cr () {
-	tr Q '\015'
-}
-
-q_to_tab () {
-	tr Q '\011'
-}
-
-append_cr () {
-	sed -e 's/$/Q/' | tr Q '\015'
-}
-
-remove_cr () {
-	tr '\015' Q | sed -e 's/Q$//'
-}
-
-# In some bourne shell implementations, the "unset" builtin returns
-# nonzero status when a variable to be unset was not set in the first
-# place.
-#
-# Use sane_unset when that should not be considered an error.
-
-sane_unset () {
-	unset "$@"
-	return 0
-}
-
-test_tick () {
-	if test -z "${test_tick+set}"
-	then
-		test_tick=1112911993
-	else
-		test_tick=$(($test_tick + 60))
-	fi
-	GIT_COMMITTER_DATE="$test_tick -0700"
-	GIT_AUTHOR_DATE="$test_tick -0700"
-	export GIT_COMMITTER_DATE GIT_AUTHOR_DATE
-}
-
-# Call test_commit with the arguments "<message> [<file> [<contents>]]"
-#
-# This will commit a file with the given contents and the given commit
-# message.  It will also add a tag with <message> as name.
-#
-# Both <file> and <contents> default to <message>.
-
-test_commit () {
-	file=${2:-"$1.t"}
-	echo "${3-$1}" > "$file" &&
-	git add "$file" &&
-	test_tick &&
-	git commit -m "$1" &&
-	git tag "$1"
-}
-
-# Call test_merge with the arguments "<message> <commit>", where <commit>
-# can be a tag pointing to the commit-to-merge.
-
-test_merge () {
-	test_tick &&
-	git merge -m "$1" "$2" &&
-	git tag "$1"
-}
-
-# This function helps systems where core.filemode=false is set.
-# Use it instead of plain 'chmod +x' to set or unset the executable bit
-# of a file in the working directory and add it to the index.
-
-test_chmod () {
-	chmod "$@" &&
-	git update-index --add "--chmod=$@"
-}
-
-# Unset a configuration variable, but don't fail if it doesn't exist.
-test_unconfig () {
-	git config --unset-all "$@"
-	config_status=$?
-	case "$config_status" in
-	5) # ok, nothing to unset
-		config_status=0
-		;;
-	esac
-	return $config_status
-}
-
-# Set git config, automatically unsetting it after the test is over.
-test_config () {
-	test_when_finished "test_unconfig '$1'" &&
-	git config "$@"
-}
-
-# Use test_set_prereq to tell that a particular prerequisite is available.
-# The prerequisite can later be checked for in two ways:
-#
-# - Explicitly using test_have_prereq.
-#
-# - Implicitly by specifying the prerequisite tag in the calls to
-#   test_expect_{success,failure,code}.
-#
-# The single parameter is the prerequisite tag (a simple word, in all
-# capital letters by convention).
-
-test_set_prereq () {
-	satisfied="$satisfied$1 "
-}
-satisfied=" "
-
-test_have_prereq () {
-	# prerequisites can be concatenated with ','
-	save_IFS=$IFS
-	IFS=,
-	set -- $*
-	IFS=$save_IFS
-
-	total_prereq=0
-	ok_prereq=0
-	missing_prereq=
-
-	for prerequisite
-	do
-		total_prereq=$(($total_prereq + 1))
-		case $satisfied in
-		*" $prerequisite "*)
-			ok_prereq=$(($ok_prereq + 1))
-			;;
-		*)
-			# Keep a list of missing prerequisites
-			if test -z "$missing_prereq"
-			then
-				missing_prereq=$prerequisite
-			else
-				missing_prereq="$prerequisite,$missing_prereq"
-			fi
-		esac
-	done
-
-	test $total_prereq = $ok_prereq
-}
-
-test_declared_prereq () {
-	case ",$test_prereq," in
-	*,$1,*)
-		return 0
-		;;
-	esac
-	return 1
-}
+# The user-facing functions are loaded from a separate file so that
+# test_perf subshells can have them too
+. "$TEST_DIRECTORY/test-lib-functions.sh"
 
 # You are not expected to call test_ok_ and test_failure_ directly, use
-# the text_expect_* functions instead.
+# the test_expect_* functions instead.
 
 test_ok_ () {
+	if test -n "$write_junit_xml"
+	then
+		write_junit_xml_testcase "$*"
+	fi
 	test_success=$(($test_success + 1))
 	say_color "" "ok $test_count - $@"
 }
 
 test_failure_ () {
+	if test -n "$write_junit_xml"
+	then
+		junit_insert="<failure message=\"not ok $test_count -"
+		junit_insert="$junit_insert $(xml_attr_encode "$1")\">"
+		junit_insert="$junit_insert $(xml_attr_encode \
+			"$(if test -n "$GIT_TEST_TEE_OUTPUT_FILE"
+			   then
+				test-tool path-utils skip-n-bytes \
+					"$GIT_TEST_TEE_OUTPUT_FILE" $GIT_TEST_TEE_OFFSET
+			   else
+				printf '%s\n' "$@" | sed 1d
+			   fi)")"
+		junit_insert="$junit_insert</failure>"
+		if test -n "$GIT_TEST_TEE_OUTPUT_FILE"
+		then
+			junit_insert="$junit_insert<system-err>$(xml_attr_encode \
+				"$(cat "$GIT_TEST_TEE_OUTPUT_FILE")")</system-err>"
+		fi
+		write_junit_xml_testcase "$1" "      $junit_insert"
+	fi
 	test_failure=$(($test_failure + 1))
-	say_color error "not ok - $test_count $1"
+	say_color error "not ok $test_count - $1"
 	shift
-	echo "$@" | sed -e 's/^/#	/'
-	test "$immediate" = "" || { GIT_EXIT_OK=t; exit 1; }
+	printf '%s\n' "$*" | sed -e 's/^/#	/'
+	test "$immediate" = "" || { finalize_junit_xml; GIT_EXIT_OK=t; exit 1; }
 }
 
 test_known_broken_ok_ () {
+	if test -n "$write_junit_xml"
+	then
+		write_junit_xml_testcase "$* (breakage fixed)"
+	fi
 	test_fixed=$(($test_fixed+1))
-	say_color "" "ok $test_count - $@ # TODO known breakage"
+	say_color error "ok $test_count - $@ # TODO known breakage vanished"
 }
 
 test_known_broken_failure_ () {
+	if test -n "$write_junit_xml"
+	then
+		write_junit_xml_testcase "$* (known breakage)"
+	fi
 	test_broken=$(($test_broken+1))
-	say_color skip "not ok $test_count - $@ # TODO known breakage"
+	say_color warn "not ok $test_count - $@ # TODO known breakage"
 }
 
 test_debug () {
 	test "$debug" = "" || eval "$1"
 }
 
+match_pattern_list () {
+	arg="$1"
+	shift
+	test -z "$*" && return 1
+	# We need to use "$*" to get field-splitting, but we want to
+	# disable globbing, since we are matching against an arbitrary
+	# $arg, not what's in the filesystem. Using "set -f" accomplishes
+	# that, but we must do it in a subshell to avoid impacting the
+	# rest of the script. The exit value of the subshell becomes
+	# the function's return value.
+	(
+		set -f
+		for pattern_ in $*
+		do
+			case "$arg" in
+			$pattern_)
+				exit 0
+				;;
+			esac
+		done
+		exit 1
+	)
+}
+
+match_test_selector_list () {
+	operation="$1"
+	shift
+	title="$1"
+	shift
+	arg="$1"
+	shift
+	test -z "$1" && return 0
+
+	# Commas are accepted as separators.
+	OLDIFS=$IFS
+	IFS=','
+	set -- $1
+	IFS=$OLDIFS
+
+	# If the first selector is negative we include by default.
+	include=
+	case "$1" in
+		!*) include=t ;;
+	esac
+
+	for selector
+	do
+		orig_selector=$selector
+
+		positive=t
+		case "$selector" in
+			!*)
+				positive=
+				selector=${selector##?}
+				;;
+		esac
+
+		test -z "$selector" && continue
+
+		case "$selector" in
+			*-*)
+				if expr "z${selector%%-*}" : "z[0-9]*[^0-9]" >/dev/null
+				then
+					echo "error: $operation: invalid non-numeric in range" \
+						"start: '$orig_selector'" >&2
+					exit 1
+				fi
+				if expr "z${selector#*-}" : "z[0-9]*[^0-9]" >/dev/null
+				then
+					echo "error: $operation: invalid non-numeric in range" \
+						"end: '$orig_selector'" >&2
+					exit 1
+				fi
+				;;
+			*)
+				if expr "z$selector" : "z[0-9]*[^0-9]" >/dev/null
+				then
+					case "$title" in *${selector}*)
+						include=$positive
+						;;
+					esac
+					continue
+				fi
+		esac
+
+		# Short cut for "obvious" cases
+		test -z "$include" && test -z "$positive" && continue
+		test -n "$include" && test -n "$positive" && continue
+
+		case "$selector" in
+			-*)
+				if test $arg -le ${selector#-}
+				then
+					include=$positive
+				fi
+				;;
+			*-)
+				if test $arg -ge ${selector%-}
+				then
+					include=$positive
+				fi
+				;;
+			*-*)
+				if test ${selector%%-*} -le $arg \
+					&& test $arg -le ${selector#*-}
+				then
+					include=$positive
+				fi
+				;;
+			*)
+				if test $arg -eq $selector
+				then
+					include=$positive
+				fi
+				;;
+		esac
+	done
+
+	test -n "$include"
+}
+
+maybe_teardown_verbose () {
+	test -z "$verbose_only" && return
+	exec 4>/dev/null 3>/dev/null
+	verbose=
+}
+
+last_verbose=t
+maybe_setup_verbose () {
+	test -z "$verbose_only" && return
+	if match_pattern_list $test_count "$verbose_only"
+	then
+		exec 4>&2 3>&1
+		# Emit a delimiting blank line when going from
+		# non-verbose to verbose.  Within verbose mode the
+		# delimiter is printed by test_expect_*.  The choice
+		# of the initial $last_verbose is such that before
+		# test 1, we do not print it.
+		test -z "$last_verbose" && echo >&3 ""
+		verbose=t
+	else
+		exec 4>/dev/null 3>/dev/null
+		verbose=
+	fi
+	last_verbose=$verbose
+}
+
+maybe_teardown_valgrind () {
+	test -z "$GIT_VALGRIND" && return
+	GIT_VALGRIND_ENABLED=
+}
+
+maybe_setup_valgrind () {
+	test -z "$GIT_VALGRIND" && return
+	if test -z "$valgrind_only"
+	then
+		GIT_VALGRIND_ENABLED=t
+		return
+	fi
+	GIT_VALGRIND_ENABLED=
+	if match_pattern_list $test_count "$valgrind_only"
+	then
+		GIT_VALGRIND_ENABLED=t
+	fi
+}
+
+trace_level_=0
+want_trace () {
+	test "$trace" = t && {
+		test "$verbose" = t || test "$verbose_log" = t
+	}
+}
+
+# This is a separate function because some tests use
+# "return" to end a test_expect_success block early
+# (and we want to make sure we run any cleanup like
+# "set +x").
+test_eval_inner_ () {
+	# Do not add anything extra (including LF) after '$*'
+	eval "
+		want_trace && trace_level_=$(($trace_level_+1)) && set -x
+		$*"
+}
+
 test_eval_ () {
-	# This is a separate function because some tests use
-	# "return" to end a test_expect_success block early.
-	eval >&3 2>&4 "$*"
+	# If "-x" tracing is in effect, then we want to avoid polluting stderr
+	# with non-test commands. But once in "set -x" mode, we cannot prevent
+	# the shell from printing the "set +x" to turn it off (nor the saving
+	# of $? before that). But we can make sure that the output goes to
+	# /dev/null.
+	#
+	# There are a few subtleties here:
+	#
+	#   - we have to redirect descriptor 4 in addition to 2, to cover
+	#     BASH_XTRACEFD
+	#
+	#   - the actual eval has to come before the redirection block (since
+	#     it needs to see descriptor 4 to set up its stderr)
+	#
+	#   - likewise, any error message we print must be outside the block to
+	#     access descriptor 4
+	#
+	#   - checking $? has to come immediately after the eval, but it must
+	#     be _inside_ the block to avoid polluting the "set -x" output
+	#
+
+	test_eval_inner_ "$@" </dev/null >&3 2>&4
+	{
+		test_eval_ret_=$?
+		if want_trace
+		then
+			test 1 = $trace_level_ && set +x
+			trace_level_=$(($trace_level_-1))
+		fi
+	} 2>/dev/null 4>&2
+
+	if test "$test_eval_ret_" != 0 && want_trace
+	then
+		say_color error >&4 "error: last command exited with \$?=$test_eval_ret_"
+	fi
+	return $test_eval_ret_
 }
 
 test_run_ () {
 	test_cleanup=:
 	expecting_failure=$2
+
+	if test "${GIT_TEST_CHAIN_LINT:-1}" != 0; then
+		# turn off tracing for this test-eval, as it simply creates
+		# confusing noise in the "-x" output
+		trace_tmp=$trace
+		trace=
+		# 117 is magic because it is unlikely to match the exit
+		# code of other programs
+		if test "OK-117" != "$(test_eval_ "(exit 117) && $1${LF}${LF}echo OK-\$?" 3>&1)" ||
+		   {
+			test "${GIT_TEST_CHAIN_LINT_HARDER:-${GIT_TEST_CHAIN_LINT_HARDER_DEFAULT:-1}}" != 0 &&
+			$(printf '%s\n' "$1" | sed -f "$GIT_BUILD_DIR/t/chainlint.sed" | grep -q '?![A-Z][A-Z]*?!')
+		   }
+		then
+			BUG "broken &&-chain or run-away HERE-DOC: $1"
+		fi
+		trace=$trace_tmp
+	fi
+
+	setup_malloc_check
 	test_eval_ "$1"
 	eval_ret=$?
+	teardown_malloc_check
 
-	if test -z "$immediate" || test $eval_ret = 0 || test -n "$expecting_failure"
+	if test -z "$immediate" || test $eval_ret = 0 ||
+	   test -n "$expecting_failure" && test "$test_cleanup" != ":"
 	then
+		setup_malloc_check
 		test_eval_ "$test_cleanup"
+		teardown_malloc_check
 	fi
-	if test "$verbose" = "t" && test -n "$HARNESS_ACTIVE"; then
+	if test "$verbose" = "t" && test -n "$HARNESS_ACTIVE"
+	then
 		echo ""
 	fi
 	return "$eval_ret"
 }
 
-test_skip () {
+test_start_ () {
 	test_count=$(($test_count+1))
+	maybe_setup_verbose
+	maybe_setup_valgrind
+	if test -n "$write_junit_xml"
+	then
+		junit_start=$(test-tool date getnanos)
+	fi
+}
+
+test_finish_ () {
+	echo >&3 ""
+	maybe_teardown_valgrind
+	maybe_teardown_verbose
+	if test -n "$GIT_TEST_TEE_OFFSET"
+	then
+		GIT_TEST_TEE_OFFSET=$(test-tool path-utils file-size \
+			"$GIT_TEST_TEE_OUTPUT_FILE")
+	fi
+}
+
+test_skip () {
 	to_skip=
-	for skp in $GIT_SKIP_TESTS
-	do
-		case $this_test.$test_count in
-		$skp)
-			to_skip=t
-			break
-		esac
-	done
+	skipped_reason=
+	if match_pattern_list $this_test.$test_count "$GIT_SKIP_TESTS"
+	then
+		to_skip=t
+		skipped_reason="GIT_SKIP_TESTS"
+	fi
+	if test -z "$to_skip" && test -n "$run_list" &&
+	   ! match_test_selector_list '--run' "$1" $test_count "$run_list"
+	then
+		to_skip=t
+		skipped_reason="--run"
+	fi
 	if test -z "$to_skip" && test -n "$test_prereq" &&
 	   ! test_have_prereq "$test_prereq"
 	then
 		to_skip=t
-	fi
-	case "$to_skip" in
-	t)
+
 		of_prereq=
 		if test "$missing_prereq" != "$test_prereq"
 		then
 			of_prereq=" of $test_prereq"
 		fi
+		skipped_reason="missing $missing_prereq${of_prereq}"
+	fi
 
-		say_color skip >&3 "skipping test: $@"
-		say_color skip "ok $test_count # skip $1 (missing $missing_prereq${of_prereq})"
+	case "$to_skip" in
+	t)
+		if test -n "$write_junit_xml"
+		then
+			message="$(xml_attr_encode "$skipped_reason")"
+			write_junit_xml_testcase "$1" \
+				"      <skipped message=\"$message\" />"
+		fi
+
+		say_color skip "ok $test_count # skip $1 ($skipped_reason)"
 		: true
 		;;
 	*)
@@ -522,322 +1059,87 @@ test_skip () {
 	esac
 }
 
-test_expect_failure () {
-	test "$#" = 3 && { test_prereq=$1; shift; } || test_prereq=
-	test "$#" = 2 ||
-	error "bug in the test script: not 2 or 3 parameters to test-expect-failure"
-	export test_prereq
-	if ! test_skip "$@"
-	then
-		say >&3 "checking known breakage: $2"
-		if test_run_ "$2" expecting_failure
-		then
-			test_known_broken_ok_ "$1"
-		else
-			test_known_broken_failure_ "$1"
-		fi
-	fi
-	echo >&3 ""
+# stub; perf-lib overrides it
+test_at_end_hook_ () {
+	:
 }
 
-test_expect_success () {
-	test "$#" = 3 && { test_prereq=$1; shift; } || test_prereq=
-	test "$#" = 2 ||
-	error "bug in the test script: not 2 or 3 parameters to test-expect-success"
-	export test_prereq
-	if ! test_skip "$@"
-	then
-		say >&3 "expecting success: $2"
-		if test_run_ "$2"
-		then
-			test_ok_ "$1"
-		else
-			test_failure_ "$@"
-		fi
-	fi
-	echo >&3 ""
+write_junit_xml () {
+	case "$1" in
+	--truncate)
+		>"$junit_xml_path"
+		junit_have_testcase=
+		shift
+		;;
+	esac
+	printf '%s\n' "$@" >>"$junit_xml_path"
 }
 
-# test_external runs external test scripts that provide continuous
-# test output about their progress, and succeeds/fails on
-# zero/non-zero exit code.  It outputs the test output on stdout even
-# in non-verbose mode, and announces the external script with "# run
-# <n>: ..." before running it.  When providing relative paths, keep in
-# mind that all scripts run in "trash directory".
-# Usage: test_external description command arguments...
-# Example: test_external 'Perl API' perl ../path/to/test.pl
-test_external () {
-	test "$#" = 4 && { test_prereq=$1; shift; } || test_prereq=
-	test "$#" = 3 ||
-	error >&5 "bug in the test script: not 3 or 4 parameters to test_external"
-	descr="$1"
+xml_attr_encode () {
+	printf '%s\n' "$@" | test-tool xml-encode
+}
+
+write_junit_xml_testcase () {
+	junit_attrs="name=\"$(xml_attr_encode "$this_test.$test_count $1")\""
 	shift
-	export test_prereq
-	if ! test_skip "$descr" "$@"
+	junit_attrs="$junit_attrs classname=\"$this_test\""
+	junit_attrs="$junit_attrs time=\"$(test-tool \
+		date getnanos $junit_start)\""
+	write_junit_xml "$(printf '%s\n' \
+		"    <testcase $junit_attrs>" "$@" "    </testcase>")"
+	junit_have_testcase=t
+}
+
+finalize_junit_xml () {
+	if test -n "$write_junit_xml" && test -n "$junit_xml_path"
 	then
-		# Announce the script to reduce confusion about the
-		# test output that follows.
-		say_color "" "# run $test_count: $descr ($*)"
-		# Export TEST_DIRECTORY, TRASH_DIRECTORY and GIT_TEST_LONG
-		# to be able to use them in script
-		export TEST_DIRECTORY TRASH_DIRECTORY GIT_TEST_LONG
-		# Run command; redirect its stderr to &4 as in
-		# test_run_, but keep its stdout on our stdout even in
-		# non-verbose mode.
-		"$@" 2>&4
-		if [ "$?" = 0 ]
-		then
-			if test $test_external_has_tap -eq 0; then
-				test_ok_ "$descr"
-			else
-				say_color "" "# test_external test $descr was ok"
-				test_success=$(($test_success + 1))
-			fi
-		else
-			if test $test_external_has_tap -eq 0; then
-				test_failure_ "$descr" "$@"
-			else
-				say_color error "# test_external test $descr failed: $@"
-				test_failure=$(($test_failure + 1))
-			fi
-		fi
+		test -n "$junit_have_testcase" || {
+			junit_start=$(test-tool date getnanos)
+			write_junit_xml_testcase "all tests skipped"
+		}
+
+		# adjust the overall time
+		junit_time=$(test-tool date getnanos $junit_suite_start)
+		sed -e "s/\(<testsuite.*\) time=\"[^\"]*\"/\1/" \
+			-e "s/<testsuite [^>]*/& time=\"$junit_time\"/" \
+			-e '/^ *<\/testsuite/d' \
+			<"$junit_xml_path" >"$junit_xml_path.new"
+		mv "$junit_xml_path.new" "$junit_xml_path"
+
+		write_junit_xml "  </testsuite>" "</testsuites>"
+		write_junit_xml=
 	fi
 }
 
-# Like test_external, but in addition tests that the command generated
-# no output on stderr.
-test_external_without_stderr () {
-	# The temporary file has no (and must have no) security
-	# implications.
-	tmp=${TMPDIR:-/tmp}
-	stderr="$tmp/git-external-stderr.$$.tmp"
-	test_external "$@" 4> "$stderr"
-	[ -f "$stderr" ] || error "Internal error: $stderr disappeared."
-	descr="no stderr: $1"
-	shift
-	say >&3 "# expecting no stderr from previous command"
-	if [ ! -s "$stderr" ]; then
-		rm "$stderr"
+test_atexit_cleanup=:
+test_atexit_handler () {
+	# In a succeeding test script 'test_atexit_handler' is invoked
+	# twice: first from 'test_done', then from 'die' in the trap on
+	# EXIT.
+	# This condition and resetting 'test_atexit_cleanup' below makes
+	# sure that the registered cleanup commands are run only once.
+	test : != "$test_atexit_cleanup" || return 0
 
-		if test $test_external_has_tap -eq 0; then
-			test_ok_ "$descr"
-		else
-			say_color "" "# test_external_without_stderr test $descr was ok"
-			test_success=$(($test_success + 1))
-		fi
-	else
-		if [ "$verbose" = t ]; then
-			output=`echo; echo "# Stderr is:"; cat "$stderr"`
-		else
-			output=
-		fi
-		# rm first in case test_failure exits.
-		rm "$stderr"
-		if test $test_external_has_tap -eq 0; then
-			test_failure_ "$descr" "$@" "$output"
-		else
-			say_color error "# test_external_without_stderr test $descr failed: $@: $output"
-			test_failure=$(($test_failure + 1))
-		fi
-	fi
-}
-
-# debugging-friendly alternatives to "test [-f|-d|-e]"
-# The commands test the existence or non-existence of $1. $2 can be
-# given to provide a more precise diagnosis.
-test_path_is_file () {
-	if ! [ -f "$1" ]
-	then
-		echo "File $1 doesn't exist. $*"
-		false
-	fi
-}
-
-test_path_is_dir () {
-	if ! [ -d "$1" ]
-	then
-		echo "Directory $1 doesn't exist. $*"
-		false
-	fi
-}
-
-test_path_is_missing () {
-	if [ -e "$1" ]
-	then
-		echo "Path exists:"
-		ls -ld "$1"
-		if [ $# -ge 1 ]; then
-			echo "$*"
-		fi
-		false
-	fi
-}
-
-# test_line_count checks that a file has the number of lines it
-# ought to. For example:
-#
-#	test_expect_success 'produce exactly one line of output' '
-#		do something >output &&
-#		test_line_count = 1 output
-#	'
-#
-# is like "test $(wc -l <output) = 1" except that it passes the
-# output through when the number of lines is wrong.
-
-test_line_count () {
-	if test $# != 3
-	then
-		error "bug in the test script: not 3 parameters to test_line_count"
-	elif ! test $(wc -l <"$3") "$1" "$2"
-	then
-		echo "test_line_count: line count for $3 !$1 $2"
-		cat "$3"
-		return 1
-	fi
-}
-
-# This is not among top-level (test_expect_success | test_expect_failure)
-# but is a prefix that can be used in the test script, like:
-#
-#	test_expect_success 'complain and die' '
-#           do something &&
-#           do something else &&
-#	    test_must_fail git checkout ../outerspace
-#	'
-#
-# Writing this as "! git checkout ../outerspace" is wrong, because
-# the failure could be due to a segv.  We want a controlled failure.
-
-test_must_fail () {
-	"$@"
-	exit_code=$?
-	if test $exit_code = 0; then
-		echo >&2 "test_must_fail: command succeeded: $*"
-		return 1
-	elif test $exit_code -gt 129 -a $exit_code -le 192; then
-		echo >&2 "test_must_fail: died by signal: $*"
-		return 1
-	elif test $exit_code = 127; then
-		echo >&2 "test_must_fail: command not found: $*"
-		return 1
-	fi
-	return 0
-}
-
-# Similar to test_must_fail, but tolerates success, too.  This is
-# meant to be used in contexts like:
-#
-#	test_expect_success 'some command works without configuration' '
-#		test_might_fail git config --unset all.configuration &&
-#		do something
-#	'
-#
-# Writing "git config --unset all.configuration || :" would be wrong,
-# because we want to notice if it fails due to segv.
-
-test_might_fail () {
-	"$@"
-	exit_code=$?
-	if test $exit_code -gt 129 -a $exit_code -le 192; then
-		echo >&2 "test_might_fail: died by signal: $*"
-		return 1
-	elif test $exit_code = 127; then
-		echo >&2 "test_might_fail: command not found: $*"
-		return 1
-	fi
-	return 0
-}
-
-# Similar to test_must_fail and test_might_fail, but check that a
-# given command exited with a given exit code. Meant to be used as:
-#
-#	test_expect_success 'Merge with d/f conflicts' '
-#		test_expect_code 1 git merge "merge msg" B master
-#	'
-
-test_expect_code () {
-	want_code=$1
-	shift
-	"$@"
-	exit_code=$?
-	if test $exit_code = $want_code
-	then
-		return 0
-	fi
-
-	echo >&2 "test_expect_code: command exited with $exit_code, we wanted $want_code $*"
-	return 1
-}
-
-# test_cmp is a helper function to compare actual and expected output.
-# You can use it like:
-#
-#	test_expect_success 'foo works' '
-#		echo expected >expected &&
-#		foo >actual &&
-#		test_cmp expected actual
-#	'
-#
-# This could be written as either "cmp" or "diff -u", but:
-# - cmp's output is not nearly as easy to read as diff -u
-# - not all diff versions understand "-u"
-
-test_cmp() {
-	$GIT_TEST_CMP "$@"
-}
-
-# This function can be used to schedule some commands to be run
-# unconditionally at the end of the test to restore sanity:
-#
-#	test_expect_success 'test core.capslock' '
-#		git config core.capslock true &&
-#		test_when_finished "git config --unset core.capslock" &&
-#		hello world
-#	'
-#
-# That would be roughly equivalent to
-#
-#	test_expect_success 'test core.capslock' '
-#		git config core.capslock true &&
-#		hello world
-#		git config --unset core.capslock
-#	'
-#
-# except that the greeting and config --unset must both succeed for
-# the test to pass.
-#
-# Note that under --immediate mode, no clean-up is done to help diagnose
-# what went wrong.
-
-test_when_finished () {
-	test_cleanup="{ $*
-		} && (exit \"\$eval_ret\"); eval_ret=\$?; $test_cleanup"
-}
-
-# Most tests can use the created repository, but some may need to create more.
-# Usage: test_create_repo <directory>
-test_create_repo () {
-	test "$#" = 1 ||
-	error "bug in the test script: not 1 parameter to test-create-repo"
-	repo="$1"
-	mkdir -p "$repo"
-	(
-		cd "$repo" || error "Cannot setup test environment"
-		"$GIT_EXEC_PATH/git-init" "--template=$GIT_BUILD_DIR/templates/blt/" >&3 2>&4 ||
-		error "cannot run git init -- have you built things yet?"
-		mv .git/hooks .git/hooks-disabled
-	) || exit
+	setup_malloc_check
+	test_eval_ "$test_atexit_cleanup"
+	test_atexit_cleanup=:
+	teardown_malloc_check
 }
 
 test_done () {
 	GIT_EXIT_OK=t
 
-	if test -z "$HARNESS_ACTIVE"; then
-		test_results_dir="$TEST_DIRECTORY/test-results"
-		mkdir -p "$test_results_dir"
-		test_results_path="$test_results_dir/${0%.sh}-$$.counts"
+	# Run the atexit commands _before_ the trash directory is
+	# removed, so the commands can access pidfiles and socket files.
+	test_atexit_handler
 
-		cat >>"$test_results_path" <<-EOF
+	finalize_junit_xml
+
+	if test -z "$HARNESS_ACTIVE"
+	then
+		mkdir -p "$TEST_RESULTS_DIR"
+
+		cat >"$TEST_RESULTS_BASE.counts" <<-EOF
 		total $test_count
 		success $test_success
 		fixed $test_fixed
@@ -849,33 +1151,63 @@ test_done () {
 
 	if test "$test_fixed" != 0
 	then
-		say_color pass "# fixed $test_fixed known breakage(s)"
+		say_color error "# $test_fixed known breakage(s) vanished; please update test(s)"
 	fi
 	if test "$test_broken" != 0
 	then
-		say_color error "# still have $test_broken known breakage(s)"
-		msg="remaining $(($test_count-$test_broken)) test(s)"
+		say_color warn "# still have $test_broken known breakage(s)"
+	fi
+	if test "$test_broken" != 0 || test "$test_fixed" != 0
+	then
+		test_remaining=$(( $test_count - $test_broken - $test_fixed ))
+		msg="remaining $test_remaining test(s)"
 	else
+		test_remaining=$test_count
 		msg="$test_count test(s)"
 	fi
 	case "$test_failure" in
 	0)
-		# Maybe print SKIP message
-		[ -z "$skip_all" ] || skip_all=" # SKIP $skip_all"
+		if test $test_external_has_tap -eq 0
+		then
+			if test $test_remaining -gt 0
+			then
+				say_color pass "# passed all $msg"
+			fi
 
-		if test $test_external_has_tap -eq 0; then
-			say_color pass "# passed all $msg"
-			say "1..$test_count$skip_all"
+			# Maybe print SKIP message
+			test -z "$skip_all" || skip_all="# SKIP $skip_all"
+			case "$test_count" in
+			0)
+				say "1..$test_count${skip_all:+ $skip_all}"
+				;;
+			*)
+				test -z "$skip_all" ||
+				say_color warn "$skip_all"
+				say "1..$test_count"
+				;;
+			esac
 		fi
 
-		test -d "$remove_trash" &&
-		cd "$(dirname "$remove_trash")" &&
-		rm -rf "$(basename "$remove_trash")"
+		if test -z "$debug" && test -n "$remove_trash"
+		then
+			test -d "$TRASH_DIRECTORY" ||
+			error "Tests passed but trash directory already removed before test cleanup; aborting"
+
+			cd "$TRASH_DIRECTORY/.." &&
+			rm -fr "$TRASH_DIRECTORY" || {
+				# try again in a bit
+				sleep 5;
+				rm -fr "$TRASH_DIRECTORY"
+			} ||
+			error "Tests passed but test cleanup failed; aborting"
+		fi
+		test_at_end_hook_
 
 		exit 0 ;;
 
 	*)
-		if test $test_external_has_tap -eq 0; then
+		if test $test_external_has_tap -eq 0
+		then
 			say_color error "# failed $test_failure among $msg"
 			say "1..$test_count"
 		fi
@@ -884,17 +1216,6 @@ test_done () {
 
 	esac
 }
-
-# Test the binaries we have just built.  The tests are kept in
-# t/ subdirectory and are run in 'trash directory' subdirectory.
-if test -z "$TEST_DIRECTORY"
-then
-	# We allow tests to override this, in case they want to run tests
-	# outside of t/, e.g. for running tests on the test library
-	# itself.
-	TEST_DIRECTORY=$(pwd)
-fi
-GIT_BUILD_DIR="$TEST_DIRECTORY"/..
 
 if test -n "$valgrind"
 then
@@ -919,19 +1240,24 @@ then
 
 	make_valgrind_symlink () {
 		# handle only executables, unless they are shell libraries that
-		# need to be in the exec-path.  We will just use "#!" as a
-		# guess for a shell-script, since we have no idea what the user
-		# may have configured as the shell path.
+		# need to be in the exec-path.
 		test -x "$1" ||
-		test "#!" = "$(head -c 2 <"$1")" ||
+		test "# " = "$(test_copy_bytes 2 <"$1")" ||
 		return;
 
 		base=$(basename "$1")
-		symlink_target=$GIT_BUILD_DIR/$base
+		case "$base" in
+		test-*)
+			symlink_target="$GIT_BUILD_DIR/t/helper/$base"
+			;;
+		*)
+			symlink_target="$GIT_BUILD_DIR/$base"
+			;;
+		esac
 		# do not override scripts
 		if test -x "$symlink_target" &&
 		    test ! -d "$symlink_target" &&
-		    test "#!" != "$(head -c 2 < "$symlink_target")"
+		    test "#!" != "$(test_copy_bytes 2 <"$symlink_target")"
 		then
 			symlink_target=../valgrind.sh
 		fi
@@ -946,7 +1272,7 @@ then
 	# override all git executables in TEST_DIRECTORY/..
 	GIT_VALGRIND=$TEST_DIRECTORY/valgrind
 	mkdir -p "$GIT_VALGRIND"/bin
-	for file in $GIT_BUILD_DIR/git* $GIT_BUILD_DIR/test-*
+	for file in $GIT_BUILD_DIR/git* $GIT_BUILD_DIR/t/helper/test-*
 	do
 		make_valgrind_symlink $file
 	done
@@ -966,32 +1292,43 @@ then
 	PATH=$GIT_VALGRIND/bin:$PATH
 	GIT_EXEC_PATH=$GIT_VALGRIND/bin
 	export GIT_VALGRIND
-elif test -n "$GIT_TEST_INSTALLED" ; then
+	GIT_VALGRIND_MODE="$valgrind"
+	export GIT_VALGRIND_MODE
+	GIT_VALGRIND_ENABLED=t
+	test -n "$valgrind_only" && GIT_VALGRIND_ENABLED=
+	export GIT_VALGRIND_ENABLED
+elif test -n "$GIT_TEST_INSTALLED"
+then
 	GIT_EXEC_PATH=$($GIT_TEST_INSTALLED/git --exec-path)  ||
 	error "Cannot run git from $GIT_TEST_INSTALLED."
-	PATH=$GIT_TEST_INSTALLED:$GIT_BUILD_DIR:$PATH
+	PATH=$GIT_TEST_INSTALLED:$GIT_BUILD_DIR/t/helper:$PATH
 	GIT_EXEC_PATH=${GIT_TEST_EXEC_PATH:-$GIT_EXEC_PATH}
 else # normal case, use ../bin-wrappers only unless $with_dashes:
-	git_bin_dir="$GIT_BUILD_DIR/bin-wrappers"
-	if ! test -x "$git_bin_dir/git" ; then
-		if test -z "$with_dashes" ; then
-			say "$git_bin_dir/git is not executable; using GIT_EXEC_PATH"
-		fi
+	if test -n "$no_bin_wrappers"
+	then
 		with_dashes=t
+	else
+		git_bin_dir="$GIT_BUILD_DIR/bin-wrappers"
+		if ! test -x "$git_bin_dir/git"
+		then
+			if test -z "$with_dashes"
+			then
+				say "$git_bin_dir/git is not executable; using GIT_EXEC_PATH"
+			fi
+			with_dashes=t
+		fi
+		PATH="$git_bin_dir:$PATH"
 	fi
-	PATH="$git_bin_dir:$PATH"
 	GIT_EXEC_PATH=$GIT_BUILD_DIR
-	if test -n "$with_dashes" ; then
-		PATH="$GIT_BUILD_DIR:$PATH"
+	if test -n "$with_dashes"
+	then
+		PATH="$GIT_BUILD_DIR:$GIT_BUILD_DIR/t/helper:$PATH"
 	fi
 fi
 GIT_TEMPLATE_DIR="$GIT_BUILD_DIR"/templates/blt
-unset GIT_CONFIG
 GIT_CONFIG_NOSYSTEM=1
 GIT_ATTR_NOSYSTEM=1
 export PATH GIT_EXEC_PATH GIT_TEMPLATE_DIR GIT_CONFIG_NOSYSTEM GIT_ATTR_NOSYSTEM
-
-. "$GIT_BUILD_DIR"/GIT-BUILD-OPTIONS
 
 if test -z "$GIT_TEST_CMP"
 then
@@ -1003,62 +1340,92 @@ then
 	fi
 fi
 
-GITPERLLIB="$GIT_BUILD_DIR"/perl/blib/lib:"$GIT_BUILD_DIR"/perl/blib/arch/auto/Git
+GITPERLLIB="$GIT_BUILD_DIR"/perl/build/lib
 export GITPERLLIB
 test -d "$GIT_BUILD_DIR"/templates/blt || {
 	error "You haven't built things yet, have you?"
 }
 
-if test -z "$GIT_TEST_INSTALLED" && test -z "$NO_PYTHON"
+if ! test -x "$GIT_BUILD_DIR"/t/helper/test-tool$X
 then
-	GITPYTHONLIB="$GIT_BUILD_DIR/git_remote_helpers/build/lib"
-	export GITPYTHONLIB
-	test -d "$GIT_BUILD_DIR"/git_remote_helpers/build || {
-		error "You haven't built git_remote_helpers yet, have you?"
-	}
-fi
-
-if ! test -x "$GIT_BUILD_DIR"/test-chmtime; then
-	echo >&2 'You need to build test-chmtime:'
-	echo >&2 'Run "make test-chmtime" in the source (toplevel) directory'
+	echo >&2 'You need to build test-tool:'
+	echo >&2 'Run "make t/helper/test-tool" in the source (toplevel) directory'
 	exit 1
 fi
 
+# Are we running this test at all?
+remove_trash=
+this_test=${0##*/}
+this_test=${this_test%%-*}
+if match_pattern_list "$this_test" "$GIT_SKIP_TESTS"
+then
+	say_color info >&3 "skipping test $this_test altogether"
+	skip_all="skip all tests in $this_test"
+	test_done
+fi
+
+# Last-minute variable setup
+HOME="$TRASH_DIRECTORY"
+GNUPGHOME="$HOME/gnupg-home-not-used"
+export HOME GNUPGHOME
+
 # Test repository
-test="trash directory.$(basename "$0" .sh)"
-test -n "$root" && test="$root/$test"
-case "$test" in
-/*) TRASH_DIRECTORY="$test" ;;
- *) TRASH_DIRECTORY="$TEST_DIRECTORY/$test" ;;
-esac
-test ! -z "$debug" || remove_trash=$TRASH_DIRECTORY
-rm -fr "$test" || {
+rm -fr "$TRASH_DIRECTORY" || {
 	GIT_EXIT_OK=t
 	echo >&5 "FATAL: Cannot prepare test area"
 	exit 1
 }
 
-HOME="$TRASH_DIRECTORY"
-export HOME
+remove_trash=t
+if test -z "$TEST_NO_CREATE_REPO"
+then
+	git init "$TRASH_DIRECTORY" >&3 2>&4 ||
+	error "cannot run git init"
+else
+	mkdir -p "$TRASH_DIRECTORY"
+fi
 
-test_create_repo "$test"
 # Use -P to resolve symlinks in our working directory so that the cwd
 # in subprocesses like git equals our $PWD (for pathname comparisons).
-cd -P "$test" || exit 1
+cd -P "$TRASH_DIRECTORY" || exit 1
 
-this_test=${0##*/}
-this_test=${this_test%%-*}
-for skp in $GIT_SKIP_TESTS
-do
-	case "$this_test" in
-	$skp)
-		say_color skip >&3 "skipping test $this_test altogether"
-		skip_all="skip all tests in $this_test"
-		test_done
-	esac
-done
+if test -n "$write_junit_xml"
+then
+	junit_xml_dir="$TEST_OUTPUT_DIRECTORY/out"
+	mkdir -p "$junit_xml_dir"
+	junit_xml_base=${0##*/}
+	junit_xml_path="$junit_xml_dir/TEST-${junit_xml_base%.sh}.xml"
+	junit_attrs="name=\"${junit_xml_base%.sh}\""
+	junit_attrs="$junit_attrs timestamp=\"$(TZ=UTC \
+		date +%Y-%m-%dT%H:%M:%S)\""
+	write_junit_xml --truncate "<testsuites>" "  <testsuite $junit_attrs>"
+	junit_suite_start=$(test-tool date getnanos)
+	if test -n "$GIT_TEST_TEE_OUTPUT_FILE"
+	then
+		GIT_TEST_TEE_OFFSET=0
+	fi
+fi
 
-# Provide an implementation of the 'yes' utility
+# Convenience
+# A regexp to match 5, 35 and 40 hexdigits
+_x05='[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'
+_x35="$_x05$_x05$_x05$_x05$_x05$_x05$_x05"
+_x40="$_x35$_x05"
+
+test_oid_init
+
+ZERO_OID=$(test_oid zero)
+OID_REGEX=$(echo $ZERO_OID | sed -e 's/0/[0-9a-f]/g')
+OIDPATH_REGEX=$(test_oid_to_path $ZERO_OID | sed -e 's/0/[0-9a-f]/g')
+EMPTY_TREE=$(test_oid empty_tree)
+EMPTY_BLOB=$(test_oid empty_blob)
+_z40=$ZERO_OID
+
+# Provide an implementation of the 'yes' utility; the upper bound
+# limit is there to help Windows that cannot stop this loop from
+# wasting cycles when the downstream stops reading, so do not be
+# tempted to turn it into an infinite loop. cf. 6129c930 ("test-lib:
+# limit the output of the yes utility", 2016-02-02)
 yes () {
 	if test $# = 0
 	then
@@ -1067,14 +1434,36 @@ yes () {
 		y="$*"
 	fi
 
-	while echo "$y"
+	i=0
+	while test $i -lt 99
 	do
-		:
+		echo "$y"
+		i=$(($i+1))
 	done
 }
 
-# Fix some commands on Windows
-case $(uname -s) in
+# The GIT_TEST_FAIL_PREREQS code hooks into test_set_prereq(), and
+# thus needs to be set up really early, and set an internal variable
+# for convenience so the hot test_set_prereq() codepath doesn't need
+# to call "git env--helper" (via test_bool_env). Only do that work
+# if needed by seeing if GIT_TEST_FAIL_PREREQS is set at all.
+GIT_TEST_FAIL_PREREQS_INTERNAL=
+if test -n "$GIT_TEST_FAIL_PREREQS"
+then
+	if test_bool_env GIT_TEST_FAIL_PREREQS false
+	then
+		GIT_TEST_FAIL_PREREQS_INTERNAL=true
+		test_set_prereq FAIL_PREREQS
+	fi
+else
+	test_lazy_prereq FAIL_PREREQS '
+		test_bool_env GIT_TEST_FAIL_PREREQS false
+	'
+fi
+
+# Fix some commands on Windows, and other OS-specific things
+uname_s=$(uname -s)
+case $uname_s in
 *MINGW*)
 	# Windows has its own (incompatible) sort and find
 	sort () {
@@ -1082,9 +1471,6 @@ case $(uname -s) in
 	}
 	find () {
 		/usr/bin/find "$@"
-	}
-	sum () {
-		md5sum "$@"
 	}
 	# git sees Windows-style pwd
 	pwd () {
@@ -1094,65 +1480,220 @@ case $(uname -s) in
 	# backslashes in pathspec are converted to '/'
 	# exec does not inherit the PID
 	test_set_prereq MINGW
+	test_set_prereq NATIVE_CRLF
 	test_set_prereq SED_STRIPS_CR
+	test_set_prereq GREP_STRIPS_CR
+	test_set_prereq WINDOWS
+	GIT_TEST_CMP=mingw_test_cmp
 	;;
 *CYGWIN*)
 	test_set_prereq POSIXPERM
 	test_set_prereq EXECKEEPSPID
-	test_set_prereq NOT_MINGW
+	test_set_prereq CYGWIN
 	test_set_prereq SED_STRIPS_CR
+	test_set_prereq GREP_STRIPS_CR
+	test_set_prereq WINDOWS
 	;;
 *)
 	test_set_prereq POSIXPERM
 	test_set_prereq BSLASHPSPEC
 	test_set_prereq EXECKEEPSPID
-	test_set_prereq NOT_MINGW
 	;;
 esac
 
-test -z "$NO_PERL" && test_set_prereq PERL
-test -z "$NO_PYTHON" && test_set_prereq PYTHON
-test -n "$USE_LIBPCRE" && test_set_prereq LIBPCRE
+# Detect arches where a few things don't work
+uname_m=$(uname -m)
+case $uname_m in
+parisc* | hppa*)
+	test_set_prereq HPPA
+	;;
+esac
 
-# Can we rely on git's output in the C locale?
-if test -n "$GETTEXT_POISON"
+test_set_prereq REFFILES
+
+( COLUMNS=1 && test $COLUMNS = 1 ) && test_set_prereq COLUMNS_CAN_BE_1
+test -z "$NO_PERL" && test_set_prereq PERL
+test -z "$NO_PTHREADS" && test_set_prereq PTHREADS
+test -z "$NO_PYTHON" && test_set_prereq PYTHON
+test -n "$USE_LIBPCRE2" && test_set_prereq PCRE
+test -n "$USE_LIBPCRE2" && test_set_prereq LIBPCRE2
+test -z "$NO_GETTEXT" && test_set_prereq GETTEXT
+
+if test -z "$GIT_TEST_CHECK_CACHE_TREE"
 then
-	GIT_GETTEXT_POISON=YesPlease
-	export GIT_GETTEXT_POISON
-else
-	test_set_prereq C_LOCALE_OUTPUT
+	GIT_TEST_CHECK_CACHE_TREE=true
+	export GIT_TEST_CHECK_CACHE_TREE
 fi
 
-# Use this instead of test_cmp to compare files that contain expected and
-# actual output from git commands that can be translated.  When running
-# under GETTEXT_POISON this pretends that the command produced expected
-# results.
-test_i18ncmp () {
-	test -n "$GETTEXT_POISON" || test_cmp "$@"
+test_lazy_prereq PIPE '
+	# test whether the filesystem supports FIFOs
+	test_have_prereq !MINGW,!CYGWIN &&
+	rm -f testfifo && mkfifo testfifo
+'
+
+test_lazy_prereq SYMLINKS '
+	# test whether the filesystem supports symbolic links
+	ln -s x y && test -h y
+'
+
+test_lazy_prereq FILEMODE '
+	test "$(git config --bool core.filemode)" = true
+'
+
+test_lazy_prereq CASE_INSENSITIVE_FS '
+	echo good >CamelCase &&
+	echo bad >camelcase &&
+	test "$(cat CamelCase)" != good
+'
+
+test_lazy_prereq FUNNYNAMES '
+	test_have_prereq !MINGW &&
+	touch -- \
+		"FUNNYNAMES tab	embedded" \
+		"FUNNYNAMES \"quote embedded\"" \
+		"FUNNYNAMES newline
+embedded" 2>/dev/null &&
+	rm -- \
+		"FUNNYNAMES tab	embedded" \
+		"FUNNYNAMES \"quote embedded\"" \
+		"FUNNYNAMES newline
+embedded" 2>/dev/null
+'
+
+test_lazy_prereq UTF8_NFD_TO_NFC '
+	# check whether FS converts nfd unicode to nfc
+	auml=$(printf "\303\244")
+	aumlcdiar=$(printf "\141\314\210")
+	>"$auml" &&
+	test -f "$aumlcdiar"
+'
+
+test_lazy_prereq AUTOIDENT '
+	sane_unset GIT_AUTHOR_NAME &&
+	sane_unset GIT_AUTHOR_EMAIL &&
+	git var GIT_AUTHOR_IDENT
+'
+
+test_lazy_prereq EXPENSIVE '
+	test -n "$GIT_TEST_LONG"
+'
+
+test_lazy_prereq EXPENSIVE_ON_WINDOWS '
+	test_have_prereq EXPENSIVE || test_have_prereq !MINGW,!CYGWIN
+'
+
+test_lazy_prereq USR_BIN_TIME '
+	test -x /usr/bin/time
+'
+
+test_lazy_prereq NOT_ROOT '
+	uid=$(id -u) &&
+	test "$uid" != 0
+'
+
+test_lazy_prereq JGIT '
+	jgit --version
+'
+
+# SANITY is about "can you correctly predict what the filesystem would
+# do by only looking at the permission bits of the files and
+# directories?"  A typical example of !SANITY is running the test
+# suite as root, where a test may expect "chmod -r file && cat file"
+# to fail because file is supposed to be unreadable after a successful
+# chmod.  In an environment (i.e. combination of what filesystem is
+# being used and who is running the tests) that lacks SANITY, you may
+# be able to delete or create a file when the containing directory
+# doesn't have write permissions, or access a file even if the
+# containing directory doesn't have read or execute permissions.
+
+test_lazy_prereq SANITY '
+	mkdir SANETESTD.1 SANETESTD.2 &&
+
+	chmod +w SANETESTD.1 SANETESTD.2 &&
+	>SANETESTD.1/x 2>SANETESTD.2/x &&
+	chmod -w SANETESTD.1 &&
+	chmod -r SANETESTD.1/x &&
+	chmod -rx SANETESTD.2 ||
+	BUG "cannot prepare SANETESTD"
+
+	! test -r SANETESTD.1/x &&
+	! rm SANETESTD.1/x && ! test -f SANETESTD.2/x
+	status=$?
+
+	chmod +rwx SANETESTD.1 SANETESTD.2 &&
+	rm -rf SANETESTD.1 SANETESTD.2 ||
+	BUG "cannot clean SANETESTD"
+	return $status
+'
+
+test FreeBSD != $uname_s || GIT_UNZIP=${GIT_UNZIP:-/usr/local/bin/unzip}
+GIT_UNZIP=${GIT_UNZIP:-unzip}
+test_lazy_prereq UNZIP '
+	"$GIT_UNZIP" -v
+	test $? -ne 127
+'
+
+run_with_limited_cmdline () {
+	(ulimit -s 128 && "$@")
 }
 
-# Use this instead of "grep expected-string actual" to see if the
-# output from a git command that can be translated either contains an
-# expected string, or does not contain an unwanted one.  When running
-# under GETTEXT_POISON this pretends that the command produced expected
-# results.
-test_i18ngrep () {
-	if test -n "$GETTEXT_POISON"
-	then
-	    : # pretend success
-	elif test "x!" = "x$1"
-	then
-		shift
-		! grep "$@"
-	else
-		grep "$@"
-	fi
+test_lazy_prereq CMDLINE_LIMIT '
+	test_have_prereq !HPPA,!MINGW,!CYGWIN &&
+	run_with_limited_cmdline true
+'
+
+run_with_limited_stack () {
+	(ulimit -s 128 && "$@")
 }
 
-# test whether the filesystem supports symbolic links
-ln -s x y 2>/dev/null && test -h y 2>/dev/null && test_set_prereq SYMLINKS
-rm -f y
+test_lazy_prereq ULIMIT_STACK_SIZE '
+	test_have_prereq !HPPA,!MINGW,!CYGWIN &&
+	run_with_limited_stack true
+'
 
-# When the tests are run as root, permission tests will report that
-# things are writable when they shouldn't be.
-test -w / || test_set_prereq SANITY
+run_with_limited_open_files () {
+	(ulimit -n 32 && "$@")
+}
+
+test_lazy_prereq ULIMIT_FILE_DESCRIPTORS '
+	test_have_prereq !MINGW,!CYGWIN &&
+	run_with_limited_open_files true
+'
+
+build_option () {
+	git version --build-options |
+	sed -ne "s/^$1: //p"
+}
+
+test_lazy_prereq LONG_IS_64BIT '
+	test 8 -le "$(build_option sizeof-long)"
+'
+
+test_lazy_prereq TIME_IS_64BIT 'test-tool date is64bit'
+test_lazy_prereq TIME_T_IS_64BIT 'test-tool date time_t-is64bit'
+
+test_lazy_prereq CURL '
+	curl --version
+'
+
+# SHA1 is a test if the hash algorithm in use is SHA-1.  This is both for tests
+# which will not work with other hash algorithms and tests that work but don't
+# test anything meaningful (e.g. special values which cause short collisions).
+test_lazy_prereq SHA1 '
+	case "$GIT_DEFAULT_HASH" in
+	sha1) true ;;
+	"") test $(git hash-object /dev/null) = e69de29bb2d1d6434b8b29ae775ad8c2e48c5391 ;;
+	*) false ;;
+	esac
+'
+
+test_lazy_prereq REBASE_P '
+	test -z "$GIT_TEST_SKIP_REBASE_P"
+'
+
+# Ensure that no test accidentally triggers a Git command
+# that runs the actual maintenance scheduler, affecting a user's
+# system permanently.
+# Tests that verify the scheduler integration must set this locally
+# to avoid errors.
+GIT_TEST_MAINT_SCHEDULER="none:exit 1"

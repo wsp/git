@@ -10,6 +10,11 @@ a merge to before the merge.
 '
 . ./test-lib.sh
 
+if ! test_have_prereq REBASE_P; then
+	skip_all='skipping git rebase -p tests, as asked for'
+	test_done
+fi
+
 . "$TEST_DIRECTORY"/lib-rebase.sh
 
 set_fake_editor
@@ -56,6 +61,7 @@ test_expect_success 'squash F1 into D1' '
 # And rebase G1..M1 onto E2
 
 test_expect_success 'rebase two levels of merge' '
+	git checkout A1 &&
 	test_commit G1 &&
 	test_commit H1 &&
 	test_commit I1 &&

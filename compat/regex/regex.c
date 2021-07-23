@@ -14,15 +14,14 @@
    Lesser General Public License for more details.
 
    You should have received a copy of the GNU Lesser General Public
-   License along with the GNU C Library; if not, write to the Free
-   Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301 USA.  */
+   License along with the GNU C Library; if not, see
+   <http://www.gnu.org/licenses/>.  */
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
 
-/* Make sure noone compiles this code with a C++ compiler.  */
+/* Make sure no one compiles this code with a C++ compiler.  */
 #ifdef __cplusplus
 # error "This is C code, use a C compiler"
 #endif
@@ -60,6 +59,8 @@
    GNU regex allows.  Include it before <regex.h>, which correctly
    #undefs RE_DUP_MAX and sets it to the right value.  */
 #include <limits.h>
+#include <stdint.h>
+#include <stdlib.h>
 
 #ifdef GAWK
 #undef alloca

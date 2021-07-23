@@ -2,6 +2,9 @@
 
 test_description='test @{-N} syntax'
 
+GIT_TEST_DEFAULT_INITIAL_BRANCH_NAME=main
+export GIT_TEST_DEFAULT_INITIAL_BRANCH_NAME
+
 . ./test-lib.sh
 
 
@@ -20,44 +23,36 @@ test_expect_success 'setup' '
 	make_commit 3 &&
 	git checkout side &&
 	make_commit 4 &&
-	git merge master &&
-	git checkout master
+	git merge main &&
+	git checkout main
 
 '
 
-# 1 -- 2 -- 3 master
+# 1 -- 2 -- 3 main
 #  \         \
 #   \         \
 #    --- 4 --- 5 side
 #
 # and 'side' should be the last branch
 
-test_rev_equivalent () {
-
-	git rev-parse "$1" > expect &&
-	git rev-parse "$2" > output &&
-	test_cmp expect output
-
-}
-
 test_expect_success '@{-1} works' '
-	test_rev_equivalent side @{-1}
+	test_cmp_rev side @{-1}
 '
 
 test_expect_success '@{-1}~2 works' '
-	test_rev_equivalent side~2 @{-1}~2
+	test_cmp_rev side~2 @{-1}~2
 '
 
 test_expect_success '@{-1}^2 works' '
-	test_rev_equivalent side^2 @{-1}^2
+	test_cmp_rev side^2 @{-1}^2
 '
 
 test_expect_success '@{-1}@{1} works' '
-	test_rev_equivalent side@{1} @{-1}@{1}
+	test_cmp_rev side@{1} @{-1}@{1}
 '
 
 test_expect_success '@{-2} works' '
-	test_rev_equivalent master @{-2}
+	test_cmp_rev main @{-2}
 '
 
 test_expect_success '@{-3} fails' '

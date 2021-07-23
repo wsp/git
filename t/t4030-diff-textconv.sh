@@ -21,17 +21,13 @@ EOF
 
 cat >hexdump <<'EOF'
 #!/bin/sh
-perl -e '$/ = undef; $_ = <>; s/./ord($&)/ge; print $_' < "$1"
+"$PERL_PATH" -e '$/ = undef; $_ = <>; s/./ord($&)/ge; print $_' < "$1"
 EOF
 chmod +x hexdump
 
 test_expect_success 'setup binary file with history' '
-	printf "\\0\\n" >file &&
-	git add file &&
-	git commit -m one &&
-	printf "\\01\\n" >>file &&
-	git add file &&
-	git commit -m two
+	test_commit --printf one file "\\0\\n" &&
+	test_commit --printf --append two file "\\01\\n"
 '
 
 test_expect_success 'file is considered binary by porcelain' '
@@ -54,6 +50,12 @@ test_expect_success 'setup textconv filters' '
 
 test_expect_success 'diff produces text' '
 	git diff HEAD^ HEAD >diff &&
+	find_diff <diff >actual &&
+	test_cmp expect.text actual
+'
+
+test_expect_success 'show commit produces text' '
+	git show HEAD >diff &&
 	find_diff <diff >actual &&
 	test_cmp expect.text actual
 '
@@ -84,19 +86,66 @@ test_expect_success 'status -v produces text' '
 	git reset --soft HEAD@{1}
 '
 
+test_expect_success 'show blob produces binary' '
+	git show HEAD:file >actual &&
+	printf "\\0\\n\\01\\n" >expect &&
+	test_cmp expect actual
+'
+
+test_expect_success 'show --textconv blob produces text' '
+	git show --textconv HEAD:file >actual &&
+	printf "0\\n1\\n" >expect &&
+	test_cmp expect actual
+'
+
+test_expect_success 'show --no-textconv blob produces binary' '
+	git show --no-textconv HEAD:file >actual &&
+	printf "\\0\\n\\01\\n" >expect &&
+	test_cmp expect actual
+'
+
+test_expect_success 'grep-diff (-G) operates on textconv data (add)' '
+	echo one >expect &&
+	git log --root --format=%s -G0 >actual &&
+	test_cmp expect actual
+'
+
+test_expect_success 'grep-diff (-G) operates on textconv data (modification)' '
+	echo two >expect &&
+	git log --root --format=%s -G1 >actual &&
+	test_cmp expect actual
+'
+
+test_expect_success 'pickaxe (-S) operates on textconv data (add)' '
+	echo one >expect &&
+	git log --root --format=%s -S0 >actual &&
+	test_cmp expect actual
+'
+
+test_expect_success 'pickaxe (-S) operates on textconv data (modification)' '
+	echo two >expect &&
+	git log --root --format=%s -S1 >actual &&
+	test_cmp expect actual
+'
+
 cat >expect.stat <<'EOF'
- file |  Bin 2 -> 4 bytes
- 1 files changed, 0 insertions(+), 0 deletions(-)
+ file | Bin 2 -> 4 bytes
+ 1 file changed, 0 insertions(+), 0 deletions(-)
 EOF
 test_expect_success 'diffstat does not run textconv' '
 	echo file diff=fail >.gitattributes &&
 	git diff --stat HEAD^ HEAD >actual &&
-	test_cmp expect.stat actual
+	test_cmp expect.stat actual &&
+
+	head -n1 <expect.stat >expect.line1 &&
+	head -n1 <actual >actual.line1 &&
+	test_cmp expect.line1 actual.line1
 '
 # restore working setup
 echo file diff=foo >.gitattributes
 
-cat >expect.typechange <<'EOF'
+symlink=$(git rev-parse --short $(printf frotz | git hash-object --stdin))
+cat >expect.typechange <<EOF
 --- a/file
 +++ /dev/null
 @@ -1,2 +0,0 @@
@@ -104,19 +153,17 @@ cat >expect.typechange <<'EOF'
 -1
 diff --git a/file b/file
 new file mode 120000
-index 0000000..67be421
+index 0000000..$symlink
 --- /dev/null
 +++ b/file
 @@ -0,0 +1 @@
 +frotz
 \ No newline at end of file
 EOF
-# make a symlink the hard way that works on symlink-challenged file systems
+
 test_expect_success 'textconv does not act on symlinks' '
-	printf frotz > file &&
-	git add file &&
-	git ls-files -s | sed -e s/100644/120000/ |
-		git update-index --index-info &&
+	rm -f file &&
+	test_ln_s_add frotz file &&
 	git commit -m typechange &&
 	git show >diff &&
 	find_diff <diff >actual &&

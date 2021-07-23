@@ -5,6 +5,9 @@
 
 test_description='Test shared repository initialization'
 
+GIT_TEST_DEFAULT_INITIAL_BRANCH_NAME=main
+export GIT_TEST_DEFAULT_INITIAL_BRANCH_NAME
+
 . ./test-lib.sh
 
 # Remove a default ACL from the test dir if possible.
@@ -12,17 +15,12 @@ setfacl -k . 2>/dev/null
 
 # User must have read permissions to the repo -> failure on --shared=0400
 test_expect_success 'shared = 0400 (faulty permission u-w)' '
+	test_when_finished "rm -rf sub" &&
 	mkdir sub && (
-		cd sub && git init --shared=0400
+		cd sub &&
+		test_must_fail git init --shared=0400
 	)
-	ret="$?"
-	rm -rf sub
-	test $ret != "0"
 '
-
-modebits () {
-	ls -l "$1" | sed -e 's|^\(..........\).*|\1|'
-}
 
 for u in 002 022
 do
@@ -33,7 +31,7 @@ do
 			git init --shared=1 &&
 			test 1 = "$(git config core.sharedrepository)"
 		) &&
-		actual=$(ls -l sub/.git/HEAD)
+		actual=$(ls -l sub/.git/HEAD) &&
 		case "$actual" in
 		-rw-rw-r--*)
 			: happy
@@ -89,11 +87,9 @@ do
 
 		rm -f .git/info/refs &&
 		git update-server-info &&
-		actual="$(modebits .git/info/refs)" &&
-		test "x$actual" = "x-$y" || {
-			ls -lt .git/info
-			false
-		}
+		actual="$(test_modebits .git/info/refs)" &&
+		verbose test "x$actual" = "x-$y"
+
 	'
 
 	umask 077 &&
@@ -101,26 +97,34 @@ do
 
 		rm -f .git/info/refs &&
 		git update-server-info &&
-		actual="$(modebits .git/info/refs)" &&
-		test "x$actual" = "x-$x" || {
-			ls -lt .git/info
-			false
-		}
+		actual="$(test_modebits .git/info/refs)" &&
+		verbose test "x$actual" = "x-$x"
 
 	'
 
 done
 
+test_expect_success POSIXPERM 'info/refs respects umask in unshared repo' '
+	rm -f .git/info/refs &&
+	test_unconfig core.sharedrepository &&
+	umask 002 &&
+	git update-server-info &&
+	echo "-rw-rw-r--" >expect &&
+	test_modebits .git/info/refs >actual &&
+	test_cmp expect actual
+'
+
 test_expect_success POSIXPERM 'git reflog expire honors core.sharedRepository' '
+	umask 077 &&
 	git config core.sharedRepository group &&
 	git reflog expire --all &&
-	actual="$(ls -l .git/logs/refs/heads/master)" &&
+	actual="$(ls -l .git/logs/refs/heads/main)" &&
 	case "$actual" in
 	-rw-rw-*)
 		: happy
 		;;
 	*)
-		echo Ooops, .git/logs/refs/heads/master is not 0662 [$actual]
+		echo Ooops, .git/logs/refs/heads/main is not 066x [$actual]
 		false
 		;;
 	esac
@@ -135,7 +139,7 @@ test_expect_success POSIXPERM 'forced modes' '
 	(
 		cd new &&
 		umask 002 &&
-		git init --shared=0660 --template=../templates &&
+		git init --shared=0660 --template=templates &&
 		>frotz &&
 		git add frotz &&
 		git commit -a -m initial &&
@@ -165,6 +169,47 @@ test_expect_success POSIXPERM 'forced modes' '
 		/^-r.-r.----/d
 		p
 	}" actual)"
+'
+
+test_expect_success POSIXPERM 'remote init does not use config from cwd' '
+	git config core.sharedrepository 0666 &&
+	umask 0022 &&
+	git init --bare child.git &&
+	echo "-rw-r--r--" >expect &&
+	test_modebits child.git/config >actual &&
+	test_cmp expect actual
+'
+
+test_expect_success POSIXPERM 're-init respects core.sharedrepository (local)' '
+	git config core.sharedrepository 0666 &&
+	umask 0022 &&
+	echo whatever >templates/foo &&
+	git init --template=templates &&
+	echo "-rw-rw-rw-" >expect &&
+	test_modebits .git/foo >actual &&
+	test_cmp expect actual
+'
+
+test_expect_success POSIXPERM 're-init respects core.sharedrepository (remote)' '
+	rm -rf child.git &&
+	umask 0022 &&
+	git init --bare --shared=0666 child.git &&
+	test_path_is_missing child.git/foo &&
+	git init --bare --template=templates child.git &&
+	echo "-rw-rw-rw-" >expect &&
+	test_modebits child.git/foo >actual &&
+	test_cmp expect actual
+'
+
+test_expect_success POSIXPERM 'template can set core.sharedrepository' '
+	rm -rf child.git &&
+	umask 0022 &&
+	git config core.sharedrepository 0666 &&
+	cp .git/config templates/config &&
+	git init --bare --template=templates child.git &&
+	echo "-rw-rw-rw-" >expect &&
+	test_modebits child.git/HEAD >actual &&
+	test_cmp expect actual
 '
 
 test_done
